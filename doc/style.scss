@@ -1,0 +1,10 @@
+.group {
+  span {
+    display: inline-block;
+    width: 60px;
+  }
+  & > div {
+    margin: 10px;
+    vertical-align: middle;
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "name": "@kne/md-doc",
+  "description": "转换readme.md文件",
+  "version": "0.1.2",
+  "main": "index.js",
+  "bin": {
+    "create-md": "bin.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "files": [
+    "bin.js",
+    "index.js"
+  ],
+  "dependencies": {
+    "chokidar": "^3.5.3",
+    "fs-extra": "^10.1.0",
+    "html-escaper": "^3.0.3",
+    "jquery": "^3.6.0",
+    "jsdom": "^20.0.0",
+    "lodash": "^4.17.21",
+    "markdown-it": "^13.0.1"
+  },
+  "author": "linzp",
+  "license": "ISC",
+  "devDependencies": {
+    "node-sass": "^7.0.1"
+  }
+}
