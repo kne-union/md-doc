@@ -6,13 +6,29 @@ const Markdown = require('markdown-it');
 const {unescape} = require('html-escaper');
 const crypto = require('crypto');
 const {JSDOM} = require('jsdom');
+const sass = require("node-sass");
 const {document} = (new JSDOM()).window;
 global.document = document;
 const $ = require('jquery')(document.defaultView);
 
 const baseDir = process.cwd();
 
-const stringify = async () => {
+const styleTransform = (name, styleString) => {
+    const output = {};
+    const styleId = name.replace(/[@\/\-]/g, '_') + '_' + crypto.createHash('md5').update(name).digest('hex').slice(0, 5);
+    output.className = styleId;
+    output.style = '';
+    if (styleString) {
+        const sass = require('node-sass');
+        output.style = sass.renderSync({
+            data: `.${styleId}{${unescape(styleString)}}`
+        }).css.toString();
+    }
+    return output;
+};
+
+const stringify = async (options) => {
+    options = Object.assign({baseDir, output: true}, options);
     const data = {};
 
     await Promise.all([{
@@ -34,7 +50,7 @@ const stringify = async () => {
         dir: './package.json',
         name: 'package'
     }].map(async ({dir, name}) => {
-        const file = path.resolve(baseDir, dir);
+        const file = path.resolve(options.baseDir, dir);
         if (await fs.exists(file)) {
             if (/\.json$/.test(dir)) {
                 data[name] = await fs.readJson(file);
@@ -46,42 +62,63 @@ const stringify = async () => {
     }));
 
     await Promise.all((get(data, 'example.list') || []).map(async (item) => {
-        Object.assign(item, {code: await fs.readFile(path.resolve(baseDir, './doc', item.code))});
+        const codeFileDir = path.resolve(options.baseDir, './doc', item.code);
+        if (await fs.exists(codeFileDir)) {
+            Object.assign(item, {code: await fs.readFile(path.resolve(options.baseDir, './doc', item.code))});
+        }
     }));
 
-    const readme = `
-# ${last(data.package.name.split('/'))}
+    const md = new Markdown();
+    const name = options.name || last(get(data, 'package.name', '').split('/'));
+    const outputData = {
+        name,
+        packageName: get(data, 'package.name', ''),
+        description: get(data, 'package.description', ''),
+        summary: data.summary,
+        summaryMD: md.render(data.summary || ''),
+        style: (data.style || '').trim(),
+        styleObject: styleTransform(name, data.style),
+        example: data.example,
+        api: data.api || '',
+        apiMd: md.render(data.api || '')
+    };
 
+    const readme = `
+# ${outputData.name}
+
+${outputData.description ? `
 ### 描述
 
-${data.package.description || ''}
+${outputData.description}
 
+` : ''}${outputData.packageName ? `
 ### 安装
 
 \`\`\`shell
-npm i --save ${data.package.name}
+npm i --save ${outputData.packageName}
 \`\`\`
-${data.summary ? `
+
+` : ''}${outputData.summary ? `
 ### 概述
 
-${data.summary}` : ''}
+${outputData.summary}
 
-### 示例${get(data, 'example.isFull') === true ? `(全屏)` : ''}
+` : ''}### 示例${get(outputData, 'example.isFull') === true ? `(全屏)` : ''}
 
-${data.style ? `
+${outputData.style ? `
 #### 示例样式
 
 \`\`\`scss
-${data.style.trim()}
+${outputData.style}
 \`\`\`
-` : ''}
-#### 示例代码
 
-${(get(data, 'example.list') || []).map(({title, description, code, scope}) => {
+` : ''}#### 示例代码
+
+${(get(outputData, 'example.list') || []).map(({title, description, code, scope}) => {
         return `- ${title}
 - ${description}
 - ${(scope || []).map(({name, packageName}) => {
-            return `${name}(${packageName})`
+            return `${name ? name : ''}(${packageName})`
         }).join(',')}
 
 \`\`\`jsx
@@ -92,10 +129,21 @@ ${code}
 
 ### API
 
-${data.api}
+${outputData.api}
 `;
-
-    await fs.writeFile(path.resolve(baseDir, './README.md'), readme);
+    if (options.output) {
+        await fs.writeFile(path.resolve(options.baseDir, './README.md'), readme);
+    }
+    return {
+        readme,
+        data: {
+            name: outputData.name,
+            description: outputData.description,
+            summary: outputData.summaryMD,
+            example: Object.assign({}, data.example, outputData.styleObject),
+            api: outputData.apiMd
+        }
+    };
 };
 
 const parse = (text) => {
@@ -127,18 +175,12 @@ const parse = (text) => {
 
     data.example = {};
 
-    data.example.isFull = !!$domList.find((el) => $(el).is('h4') && $(el).text() === '示例(全屏)');
+    data.example.isFull = !!$domList.find((el) => $(el).is('h3') && $(el).text() === '示例(全屏)');
 
     const styleString = $($domList[exampleStyleIndex + 1]).find('code').html();
-    const styleId = name.replace(/[@\/\-]/g, '_') + '_' + crypto.createHash('md5').update(name).digest('hex').slice(0, 5);
-    data.example.className = styleId;
-    data.example.style = '';
-    if (styleString) {
-        const sass = require('node-sass');
-        data.example.style = sass.renderSync({
-            data: `.${styleId}{${unescape(styleString)}}`
-        }).css.toString();
-    }
+    const styleObject = styleTransform(name, styleString);
+    data.example.className = styleObject.className;
+    data.example.style = styleObject.style;
 
     const exampleIndex = $domList.findIndex((el, index) => {
         return $(el).is('h4') && $(el).text() === '示例代码';
