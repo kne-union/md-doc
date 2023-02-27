@@ -6,7 +6,6 @@ const Markdown = require('markdown-it');
 const {unescape} = require('html-escaper');
 const crypto = require('crypto');
 const {JSDOM} = require('jsdom');
-const sass = require("node-sass");
 const {document} = (new JSDOM()).window;
 global.document = document;
 const $ = require('jquery')(document.defaultView);
@@ -32,23 +31,17 @@ const stringify = async (options) => {
     const data = {};
 
     await Promise.all([{
-        dir: './doc/api.md',
-        name: 'api'
+        dir: './doc/api.md', name: 'api'
     }, {
-        dir: './doc/summary.md',
-        name: 'summary'
+        dir: './doc/summary.md', name: 'summary'
     }, {
-        dir: './doc/example.json',
-        name: 'example'
+        dir: './doc/example.json', name: 'example'
     }, {
-        dir: './doc/style.css',
-        name: 'style'
+        dir: './doc/style.css', name: 'style'
     }, {
-        dir: './doc/style.scss',
-        name: 'style'
+        dir: './doc/style.scss', name: 'style'
     }, {
-        dir: './package.json',
-        name: 'package'
+        dir: './package.json', name: 'package'
     }].map(async ({dir, name}) => {
         const file = path.resolve(options.baseDir, dir);
         if (await fs.exists(file)) {
@@ -135,8 +128,7 @@ ${outputData.api}
         await fs.writeFile(path.resolve(options.baseDir, './README.md'), readme);
     }
     return {
-        readme,
-        data: {
+        readme, data: {
             name: outputData.name,
             description: outputData.description,
             summary: outputData.summaryMD,
@@ -148,8 +140,7 @@ ${outputData.api}
 
 const parse = (text) => {
     const data = {};
-    const md = new Markdown(),
-        $dom = $(`<div>${md.render(text)}</div>`);
+    const md = new Markdown(), $dom = $(`<div>${md.render(text)}</div>`);
     const $domList = [].slice.call($dom.children(), 0);
 
     const name = $($domList.find((el) => $(el).is('h1'))).text();
@@ -159,6 +150,8 @@ const parse = (text) => {
     });
 
     const exampleTitleIndex = $domList.findIndex((el) => $(el).is("h3") && ["示例", "示例(全屏)"].indexOf($(el).text()) > -1);
+
+    data.name = name;
 
     data.summary = $domList.filter((item, index) => index < exampleTitleIndex && index > summaryTitleIndex).map((item) => item.outerHTML).join("\n");
 
@@ -193,14 +186,11 @@ const parse = (text) => {
             output.push($(item).text());
         });
         return {
-            title: output[0] || '',
-            description: output[1] || '',
-            scope: (output[2] || '').split(',').map((str) => {
+            title: output[0] || '', description: output[1] || '', scope: (output[2] || '').split(',').map((str) => {
                 const matcher = str.match(/(.*)\((.*)\)/);
                 if (matcher) {
                     return {
-                        name: matcher[1],
-                        packageName: matcher[2]
+                        name: matcher[1], packageName: matcher[2]
                     };
                 }
             }).filter((item) => !!item)
