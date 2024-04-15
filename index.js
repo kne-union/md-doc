@@ -12,17 +12,36 @@ const $ = require('jquery')(document.defaultView);
 
 const baseDir = process.cwd();
 
+const getSassModule = () => {
+    try {
+        return require('sass');
+    } catch (e) {
+        console.warn('sass没有安装尝试使用node-sass');
+    }
+    try {
+        return require('node-sass');
+    } catch (e) {
+        console.warn('node-sass没有安装');
+    }
+
+    console.warn('请至少安装sass或者node-sass中的一个用来编译sass样式文件');
+};
+
 const styleTransform = (name, styleString) => {
     const output = {};
     const styleId = name.replace(/[@\/\-]/g, '_') + '_' + crypto.createHash('md5').update(name).digest('hex').slice(0, 5);
     output.className = styleId;
     output.style = '';
-    if (styleString) {
-        const sass = require('node-sass');
-        output.style = sass.renderSync({
-            data: `.${styleId}{${unescape(styleString)}}`
-        }).css.toString();
+    if (!styleString) {
+        return output;
     }
+    const sass = getSassModule();
+    if (!sass) {
+        return output;
+    }
+    output.style = sass.renderSync({
+        data: `.${styleId}{${unescape(styleString)}}`
+    }).css.toString();
     return output;
 };
 
