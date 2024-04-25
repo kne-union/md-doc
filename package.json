@@ -1,12 +1,13 @@
 {
   "name": "@kne/md-doc",
   "description": "转换readme.md文件",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "main": "index.js",
   "bin": {
     "create-md": "bin.js"
   },
   "scripts": {
+    "build:md": "node bin.js",
     "init": "husky",
     "test": "",
     "prettier": "prettier --config .prettierrc --write '{libs/**/*,index}.{js,jsx,ts,tsx,json,css,scss}'",
