@@ -1,9 +1,101 @@
-* 该组件处理了数据请求的逻辑，在数据请求返回之前会渲染一个loading组件，在请求数据返回之后渲染业务组件
+格式化或解析文件数据
 
-* 在url，data，options其中之一发生改变的时候，组件会自动发出一个新的请求去请求数据
+### stringify
 
-* 可以传入多个请求，并发发送，在所有请求成功后渲染业务组件，当某一个请求的参数发生变化，单独发送这一个请求成功后渲染业务组件
+根据目录地址编译并格式化数据，返回数据或将数据导出为 README.md 文件
 
-* 底层采用 [axios](https://github.com/axios/axios) 易于扩展
+1. 获取目录地址
+2. 根据目录地址读取并重新赋值目录下固定文件的数据
+3. 取解析后的 ”example.list“ 数据循环，获取每条数据中的 ”code“ 字段，读取 ”code“ 后的文件数据重新赋值给 code
+4. 获取文件名称（自定义的或者 package name）
+5. 格式化以上获取到的数据生成新的 readme 数据
+6. 根据传入或默认的 output 状态返回以下数据
 
-* 用preset预制设置，全局生效，不用在每次调用都设置一些通用属性
+output：
+
+* 解析目录下文件后重新生成的 README.md 文件
+
+或者：
+
+* 解析目录下文件后重新生成的 readme 文件数据
+* 解析路径文件格式化后的数据
+* 数据包括
+    - name ***（传入的）组件 name 或 package 的 name***
+    - description ***根据路径解析出的 example.json 数据中 list 格式化***
+    - summary ***根据路径解析出的 summary.md 数据***
+    - example ***根据路径解析出并格式化的 example.json 数据***
+    - api ***根据路径解析出的 api.md 数据***
+
+### parse
+
+接收读取到的 README.md 文件数据，返回一个格式化后的 Object
+
+Output:
+
+* name ***解析出的标题***
+* summary ***解析出的概述***
+* api ***解析出的 API***
+* example ***读取到的 example 是一个 jsx 模块，会将拿到的数据进行反解析***
+
+example 模块：
+例如：
+
+```jsx
+const {default: [name]} = _[name];
+const {Button} = _antd;
+const {createWithRemoteLoader} = _remoteLoader;
+
+const BaseExample = createWithRemoteLoader({
+  modules: ['Modal@useModal']
+})(({remoteModules}) => {
+  const [useModal] = remoteModules;
+  const modal = useModal();
+  return (
+    <Button
+      onClick={() => {
+        modal({
+          title: '',
+          footer: null,
+          size: 'small',
+          children: <div>BaseExample</div>,
+        });
+      }}
+    >
+      点击弹出
+    </Button>
+  );
+});
+
+render(<BaseExample/>);
+```
+
+会被解析为如下示例：
+
+```json
+{
+  "isFull": false,
+  "className": "[name]_55026",
+  "style": "",
+  "list": [
+    {
+      "title": "这里填写示例标题",
+      "description": "这里填写示例说明",
+      "scope": [
+        {
+          "name": "_[name]",
+          "packageName": "@components/[name]"
+        },
+        {
+          "name": "_remoteLoader",
+          "packageName": "@kne/remote-loader"
+        },
+        {
+          "name": "_antd",
+          "packageName": "antd"
+        }
+      ],
+      "code": ["解析后其实是上述 jsx 模块的 string 版本"]
+    }
+  ]
+}
+```
