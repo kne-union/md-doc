@@ -207,7 +207,7 @@ const parse = (text) => {
         return {
             title: output[0] || '', description: output[1] || '', scope: (output[2] || '').split(',').map((str) => {
                 const matcher = str.match(/(.*)\((.*)\)/);
-                const importStatementMatcher = str.match(/\[(.*)]]/);
+                const importStatementMatcher = str.match(/\[(.*)]/);
                 const output = {};
                 if (matcher) {
                     Object.assign(output, {
