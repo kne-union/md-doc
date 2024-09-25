@@ -129,8 +129,8 @@ ${outputData.style}
 ${(get(outputData, 'example.list') || []).map(({title, description, code, scope}) => {
         return `- ${title}
 - ${description}
-- ${(scope || []).map(({name, packageName}) => {
-            return `${name ? name : ''}(${packageName})`
+- ${(scope || []).map(({name, importStatement, packageName}) => {
+            return `${name ? name : ''}(${packageName})${importStatement ? `[${importStatement}]` : ''}`
         }).join(',')}
 
 \`\`\`jsx
@@ -207,11 +207,19 @@ const parse = (text) => {
         return {
             title: output[0] || '', description: output[1] || '', scope: (output[2] || '').split(',').map((str) => {
                 const matcher = str.match(/(.*)\((.*)\)/);
+                const importStatementMatcher = str.match(/\[(.*)]/);
+                const output = {};
                 if (matcher) {
-                    return {
+                    Object.assign(output, {
                         name: matcher[1], packageName: matcher[2]
-                    };
+                    })
                 }
+                if (importStatementMatcher) {
+                    Object.assign(output, {
+                        importStatement: importStatementMatcher[1],
+                    })
+                }
+                return output;
             }).filter((item) => !!item)
         };
     });
