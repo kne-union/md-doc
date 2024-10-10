@@ -16,15 +16,8 @@ const getSassModule = () => {
     try {
         return require('sass');
     } catch (e) {
-        console.warn('sass没有安装尝试使用node-sass');
+        console.warn('sass没有安装,请安装sass用以编译sass文件(node-sass已不再被支持)');
     }
-    try {
-        return require('node-sass');
-    } catch (e) {
-        console.warn('node-sass没有安装');
-    }
-
-    console.warn('请至少安装sass或者node-sass中的一个用来编译sass样式文件');
 };
 
 const styleTransform = (name, styleString) => {
@@ -39,9 +32,7 @@ const styleTransform = (name, styleString) => {
     if (!sass) {
         return output;
     }
-    output.style = sass.renderSync({
-        data: `.${styleId}{${unescape(styleString)}}`
-    }).css.toString();
+    output.style = sass.compileString(`.${styleId}{${unescape(styleString)}}`).css;
     return output;
 };
 
