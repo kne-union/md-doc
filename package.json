@@ -9,7 +9,7 @@
   "scripts": {
     "build:md": "node bin.js",
     "init": "husky",
-    "test": "",
+    "test": "mocha test/**/*.test.js",
     "prettier": "prettier --config .prettierrc --write '{libs/**/*,index}.{js,jsx,ts,tsx,json,css,scss}'",
     "lint-staged": "npx lint-staged"
   },
@@ -29,14 +29,15 @@
     "html-escaper": "^3.0.3",
     "jquery": "^3.6.0",
     "jsdom": "^20.0.0",
-    "lodash": "^4.17.21",
     "markdown-it": "^13.0.1"
   },
   "author": "linzp",
   "license": "ISC",
   "devDependencies": {
-    "sass": "^1.75.0",
+    "chai": "^6.2.2",
     "husky": "^9.0.11",
-    "prettier": "^3.2.5"
+    "mocha": "^11.7.5",
+    "prettier": "^3.2.5",
+    "sass": "^1.75.0"
   }
 }
