@@ -155,7 +155,6 @@ const handleReference = async (baseDir, example, output) => {
     readme = readme.replace(new RegExp(name.split('/').join('/current-lib_'), 'g'), name);
     
     if (output) {
-      console.log('---->', readme);
       await fs.writeFile(path.resolve(baseDir, './README.md'), readme);
     }
     
