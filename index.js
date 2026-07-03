@@ -25,6 +25,8 @@ const MD_TITLES = {
   EXAMPLE_CODE: '示例代码'
 };
 
+const ITEM_FULL_SUFFIX = '(全屏)';
+
 // 初始化 jQuery
 const { document } = (new JSDOM()).window;
 global.document = document;
@@ -239,11 +241,11 @@ const generateReadme = (outputData) => {
   
   if (hasExamples) {
     content += `#### 示例代码\n\n`;
-    content += exampleList.map(({ title, description, code, scope }) => {
+    content += exampleList.map(({ title, description, code, scope, isFull }) => {
       const scopeStr = (scope || []).map(({ name, importStatement, packageName }) => {
         return `${name || ''}(${packageName})${importStatement ? `[${importStatement}]` : ''}`;
       }).join(',');
-      return `- ${title}\n- ${description}\n- ${scopeStr}\n\n\`\`\`jsx\n${escapeCodeBlock(code)}\n\`\`\``;
+      return `- ${title}${isFull ? ITEM_FULL_SUFFIX : ''}\n- ${description}\n- ${scopeStr}\n\n\`\`\`jsx\n${escapeCodeBlock(code)}\n\`\`\``;
     }).join('\n\n');
     content += '\n\n';
   }
@@ -330,10 +332,15 @@ const parseExampleProps = ($domList, exampleIndex, apiTitleIndex) => {
         output.push($(li).text());
       });
       
+      const rawTitle = output[0] || '';
+      const isFull = rawTitle.endsWith(ITEM_FULL_SUFFIX);
+      const title = isFull ? rawTitle.slice(0, -ITEM_FULL_SUFFIX.length) : rawTitle;
+
       props.push({
-        title: output[0] || '',
+        title,
         description: output[1] || '',
-        scope: parseScopeString(output[2])
+        scope: parseScopeString(output[2]),
+        ...(isFull ? { isFull: true } : {})
       });
     }
   });

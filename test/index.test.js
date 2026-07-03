@@ -222,6 +222,42 @@ const Button = () => <button>Click</button>;
       expect(result.example.list[0].scope[0]).to.have.property('importStatement', "import { Button } from 'antd'");
     });
 
+    it('应该解析示例项全屏标记', () => {
+      const md = `# Test
+
+### 概述
+
+Summary
+
+### 示例
+
+#### 示例代码
+
+- 全屏标题(全屏)
+- 全屏描述
+- scope1(package1)
+
+\`\`\`jsx
+const App = () => <div>Full</div>;
+\`\`\`
+
+- 普通标题
+- 普通描述
+- scope2(package2)
+
+\`\`\`jsx
+const App2 = () => <div>Normal</div>;
+\`\`\`
+
+### API`;
+      const result = parse(md);
+
+      expect(result.example.list[0]).to.have.property('title', '全屏标题');
+      expect(result.example.list[0]).to.have.property('isFull', true);
+      expect(result.example.list[1]).to.have.property('title', '普通标题');
+      expect(result.example.list[1]).to.not.have.property('isFull');
+    });
+
     it('应该正确处理包含字符串模板的代码', async () => {
       // 创建测试文件
       await fs.writeJson(path.join(tempDir, 'package.json'), {
@@ -503,6 +539,27 @@ line3\`;`;
       const readme = await fs.readFile(path.join(tempDir, 'README.md'), 'utf8');
 
       expect(readme).to.include('### 示例(全屏)');
+    });
+
+    it('应该处理示例项全屏标记', async () => {
+      await fs.writeJson(path.join(tempDir, 'doc/example.json'), {
+        list: [
+          {
+            title: '全屏示例',
+            description: '全屏描述',
+            code: 'const App = () => <div />;',
+            scope: [],
+            isFull: true
+          }
+        ]
+      });
+
+      await stringify({ baseDir: tempDir, output: true });
+
+      const readme = await fs.readFile(path.join(tempDir, 'README.md'), 'utf8');
+
+      expect(readme).to.include('- 全屏示例(全屏)');
+      expect(readme).to.not.include('- 全屏示例(全屏)(全屏)');
     });
 
     it('应该支持 CSS 和 SCSS 样式文件', async () => {
