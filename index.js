@@ -196,8 +196,7 @@ const escapeCodeBlock = (code) => {
 // 反转义代码块中的 HTML 实体
 const unescapeCodeBlock = (code) => {
   if (!code) return code;
-  // 将 HTML 实体转义回反引号
-  return code.replace(/&#96;/g, '`');
+  return unescape(code).replace(/&#96;/g, '`');
 };
 
 // 生成 README 内容
