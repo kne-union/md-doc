@@ -23,6 +23,14 @@
     "bin.js",
     "index.js"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kne-union/md-doc.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kne-union/md-doc/issues"
+  },
+  "homepage": "https://github.com/kne-union/md-doc#readme",
   "dependencies": {
     "chokidar": "^3.5.3",
     "fs-extra": "^10.1.0",
