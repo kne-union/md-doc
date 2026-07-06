@@ -125,6 +125,126 @@ const readDocFiles = async (baseDir) => {
   return data;
 };
 
+// 解析路径表达式，支持 list[0]、list.0 等写法
+const resolvePath = (obj, pathStr) => {
+  if (!pathStr || obj == null) {
+    return undefined;
+  }
+
+  const normalized = pathStr
+    .replace(/\[(\d+)\]/g, '.$1')
+    .replace(/^\./, '');
+  const keys = normalized.split('.').filter(Boolean);
+  let result = obj;
+
+  for (const key of keys) {
+    if (result == null) {
+      return undefined;
+    }
+    result = result[key];
+  }
+
+  return result;
+};
+
+// 收集模块解析路径，从 baseDir 向上遍历目录
+const getResolvePaths = (baseDir) => {
+  const paths = [];
+  let current = path.resolve(baseDir);
+  const root = path.parse(current).root;
+
+  while (current !== root) {
+    paths.push(current);
+    current = path.dirname(current);
+  }
+
+  return paths;
+};
+
+// 将引用包 README 中的 current-lib 占位符还原为真实包名
+const normalizeCurrentLibPlaceholder = (value, packageName) => {
+  if (!value || typeof value !== 'string' || !packageName) {
+    return value;
+  }
+  const placeholder = packageName.split('/').join('/current-lib_');
+  return value.split(placeholder).join(packageName);
+};
+
+const normalizeReferencedExample = (item, packageName) => {
+  const normalized = { ...item };
+
+  if (Array.isArray(normalized.scope)) {
+    normalized.scope = normalized.scope.map((scopeItem) => ({
+      ...scopeItem,
+      packageName: normalizeCurrentLibPlaceholder(scopeItem.packageName, packageName)
+    }));
+  }
+
+  return normalized;
+};
+
+// 从引用包加载单个示例项
+const loadReferencedExample = async (reference, pathStr, baseDir = DEFAULT_BASE_DIR) => {
+  try {
+    const resolvePaths = getResolvePaths(baseDir);
+    const packageJsonPath = require.resolve(`${reference}/package.json`, { paths: resolvePaths });
+    const packageDir = path.dirname(packageJsonPath);
+    const { name: packageName } = require(packageJsonPath);
+    const exampleJsonPath = path.join(packageDir, 'doc/example.json');
+    let exampleData;
+
+    if (await fs.exists(exampleJsonPath)) {
+      exampleData = await fs.readJson(exampleJsonPath);
+    } else {
+      const readmePath = require.resolve(`${reference}/README.md`, { paths: resolvePaths });
+      const readme = await fs.readFile(readmePath, 'utf8');
+      exampleData = parse(readme).example || {};
+    }
+
+    const item = resolvePath(exampleData, pathStr);
+
+    if (!item || typeof item !== 'object') {
+      console.warn(`引用路径未找到: ${reference} -> ${pathStr}`);
+      return null;
+    }
+
+    const resolved = normalizeReferencedExample({ ...item }, packageName);
+
+    if (resolved.code && typeof resolved.code === 'string' && /^\.\//.test(resolved.code)) {
+      const codePath = path.resolve(packageDir, 'doc', resolved.code);
+      if (await fs.exists(codePath)) {
+        resolved.code = await fs.readFile(codePath, 'utf8');
+      }
+    }
+
+    return resolved;
+  } catch (error) {
+    console.warn(`加载引用示例失败: ${reference} -> ${pathStr}`, error.message);
+    return null;
+  }
+};
+
+// 解析 list 中的 reference + path 引用项
+const resolveExampleListReferences = async (exampleList, baseDir = DEFAULT_BASE_DIR) => {
+  if (!Array.isArray(exampleList) || exampleList.length === 0) {
+    return;
+  }
+
+  await Promise.all(exampleList.map(async (item, index) => {
+    if (!item || !item.reference || !item.path) {
+      return;
+    }
+
+    const resolved = await loadReferencedExample(item.reference, item.path, baseDir);
+    if (!resolved) {
+      return;
+    }
+
+    const { reference, path: refPath, ...localOverrides } = item;
+    exampleList[index] = { ...resolved, ...localOverrides };
+  }));
+};
+
 // 加载示例代码
 const loadExampleCodes = async (baseDir, exampleList) => {
   if (!Array.isArray(exampleList) || exampleList.length === 0) {
@@ -145,8 +265,8 @@ const loadExampleCodes = async (baseDir, exampleList) => {
   }));
 };
 
-// 处理参考文档
-const handleReference = async (baseDir, example, output) => {
+// 处理参考文档，支持将本地 example.list 追加到引用包的示例列表
+const handleReference = async (baseDir, example, output, { appendList = [] } = {}) => {
   if (!example || !example.reference) {
     return null;
   }
@@ -155,6 +275,10 @@ const handleReference = async (baseDir, example, output) => {
     let readme = await fs.readFile(require.resolve(`${example.reference}/README.md`), 'utf8');
     const { name } = require(`${example.reference}/package.json`);
     readme = readme.replace(new RegExp(name.split('/').join('/current-lib_'), 'g'), name);
+
+    if (appendList.length > 0) {
+      readme = mergeAppendExamplesIntoReadme(readme, appendList);
+    }
     
     if (output) {
       await fs.writeFile(path.resolve(baseDir, './README.md'), readme);
@@ -191,6 +315,47 @@ const escapeCodeBlock = (code) => {
   if (!code) return code;
   // 将代码中的反引号转义为 HTML 实体
   return code.replace(/`/g, '&#96;');
+};
+
+const buildExampleItemMarkdown = ({ title, description, code, scope, isFull }) => {
+  const scopeStr = (scope || []).map(({ name, importStatement, packageName }) => {
+    return `${name || ''}(${packageName})${importStatement ? `[${importStatement}]` : ''}`;
+  }).join(',');
+  return `- ${title}${isFull ? ITEM_FULL_SUFFIX : ''}\n- ${description}\n- ${scopeStr}\n\n\`\`\`jsx\n${escapeCodeBlock(code)}\n\`\`\``;
+};
+
+const buildExampleCodeSection = (exampleList) => {
+  if (!Array.isArray(exampleList) || exampleList.length === 0) {
+    return '';
+  }
+  return `#### ${MD_TITLES.EXAMPLE_CODE}\n\n${exampleList.map(buildExampleItemMarkdown).join('\n\n')}`;
+};
+
+// 将本地追加的示例合并进 reference README
+const mergeAppendExamplesIntoReadme = (readme, appendList) => {
+  if (!readme || typeof readme !== 'string' || !Array.isArray(appendList) || appendList.length === 0) {
+    return readme;
+  }
+
+  const parsed = parse(readme);
+  const mergedList = [...(parsed.example.list || []), ...appendList];
+  const newExampleSection = buildExampleCodeSection(mergedList);
+  const codeSectionStart = readme.indexOf(`#### ${MD_TITLES.EXAMPLE_CODE}`);
+  const apiSectionStart = readme.indexOf(`### ${MD_TITLES.API}`);
+
+  if (codeSectionStart !== -1 && apiSectionStart !== -1 && apiSectionStart > codeSectionStart) {
+    const before = readme.slice(0, codeSectionStart);
+    const after = readme.slice(apiSectionStart);
+    return `${before}${newExampleSection}\n\n${after}`;
+  }
+
+  if (apiSectionStart !== -1) {
+    const before = readme.slice(0, apiSectionStart).trimEnd();
+    const after = readme.slice(apiSectionStart);
+    return `${before}\n\n${newExampleSection}\n\n${after}`;
+  }
+
+  return `${readme.trimEnd()}\n\n${newExampleSection}`;
 };
 
 // 反转义代码块中的 HTML 实体
@@ -239,14 +404,7 @@ const generateReadme = (outputData) => {
   }
   
   if (hasExamples) {
-    content += `#### 示例代码\n\n`;
-    content += exampleList.map(({ title, description, code, scope, isFull }) => {
-      const scopeStr = (scope || []).map(({ name, importStatement, packageName }) => {
-        return `${name || ''}(${packageName})${importStatement ? `[${importStatement}]` : ''}`;
-      }).join(',');
-      return `- ${title}${isFull ? ITEM_FULL_SUFFIX : ''}\n- ${description}\n- ${scopeStr}\n\n\`\`\`jsx\n${escapeCodeBlock(code)}\n\`\`\``;
-    }).join('\n\n');
-    content += '\n\n';
+    content += `${buildExampleCodeSection(exampleList)}\n\n`;
   }
   
   content += `### API\n\n${outputData.api}`;
@@ -260,11 +418,16 @@ const stringify = async (options = {}) => {
   // 读取文档文件
   const data = await readDocFiles(opts.baseDir);
   
-  // 加载示例代码
-  await loadExampleCodes(opts.baseDir, get(data, 'example.list'));
+  const appendList = get(data, 'example.list', []) || [];
+
+  // 解析 list 中的 reference + path 引用
+  await resolveExampleListReferences(appendList, opts.baseDir);
+
+  // 加载本地示例代码
+  await loadExampleCodes(opts.baseDir, appendList);
   
-  // 处理参考文档
-  const referenceResult = await handleReference(opts.baseDir, data.example, opts.output);
+  // 处理参考文档（可将本地 example.list 追加到引用包示例后）
+  const referenceResult = await handleReference(opts.baseDir, data.example, opts.output, { appendList });
   if (referenceResult) {
     return referenceResult;
   }
@@ -434,4 +597,15 @@ const parse = (text) => {
   return data;
 };
 
-module.exports = { stringify, parse, styleTransform };
+module.exports = {
+  stringify,
+  parse,
+  styleTransform,
+  mergeAppendExamplesIntoReadme,
+  buildExampleCodeSection,
+  resolvePath,
+  resolveExampleListReferences,
+  loadReferencedExample,
+  normalizeCurrentLibPlaceholder,
+  normalizeReferencedExample
+};

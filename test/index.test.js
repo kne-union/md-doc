@@ -2,7 +2,7 @@ const { expect } = require('chai');
 const fs = require('fs-extra');
 const path = require('path');
 const os = require('os');
-const { stringify, parse, styleTransform } = require('../index');
+const { stringify, parse, styleTransform, mergeAppendExamplesIntoReadme, resolvePath, resolveExampleListReferences, loadReferencedExample, normalizeCurrentLibPlaceholder } = require('../index');
 
 describe('md-doc', () => {
   let tempDir;
@@ -406,6 +406,196 @@ line3\`;`;
 
       expect(result.summary).to.equal('');
       expect(result.api).to.equal('');
+    });
+  });
+
+  describe('resolvePath', () => {
+    const data = {
+      list: [
+        { title: 'first', code: 'code1' },
+        { title: 'second', code: 'code2' }
+      ]
+    };
+
+    it('应该支持 list[0] 路径写法', () => {
+      expect(resolvePath(data, 'list[0]')).to.deep.equal({ title: 'first', code: 'code1' });
+    });
+
+    it('应该支持 list.1 路径写法', () => {
+      expect(resolvePath(data, 'list.1')).to.deep.equal({ title: 'second', code: 'code2' });
+    });
+
+    it('路径不存在时应该返回 undefined', () => {
+      expect(resolvePath(data, 'list[9]')).to.equal(undefined);
+      expect(resolvePath(data, 'missing.path')).to.equal(undefined);
+    });
+  });
+
+  describe('resolveExampleListReferences', () => {
+    it('应该将 list 中的 reference + path 解析为完整示例项', async () => {
+      const exampleList = [
+        {
+          reference: '@test/ref-package',
+          path: 'list[0]',
+          title: '自定义标题'
+        }
+      ];
+
+      await resolveExampleListReferences(exampleList);
+
+      expect(exampleList[0]).to.have.property('title', '自定义标题');
+      expect(exampleList[0]).to.have.property('description', '来自引用包的示例');
+      expect(exampleList[0]).to.have.property('code');
+      expect(exampleList[0].code).to.include('render');
+      expect(exampleList[0]).to.not.have.property('reference');
+      expect(exampleList[0]).to.not.have.property('path');
+      expect(exampleList[0].scope).to.be.an('array');
+    });
+
+    it('没有 reference 的条目应该保持不变', async () => {
+      const exampleList = [
+        {
+          title: '本地示例',
+          description: '本地描述',
+          code: 'const App = () => null;',
+          scope: []
+        }
+      ];
+
+      await resolveExampleListReferences(exampleList);
+
+      expect(exampleList[0].title).to.equal('本地示例');
+      expect(exampleList[0].code).to.equal('const App = () => null;');
+    });
+  });
+
+  describe('normalizeCurrentLibPlaceholder', () => {
+    it('应该将 current-lib 占位符替换为真实包名', () => {
+      const result = normalizeCurrentLibPlaceholder(
+        '@kne/current-lib_react-file/dist/index.css',
+        '@kne/react-file'
+      );
+      expect(result).to.equal('@kne/react-file/dist/index.css');
+    });
+  });
+
+  describe('stringify with list reference', () => {
+    it('应该解析 list 中的 reference + path 并生成 README', async () => {
+      await fs.ensureDir(path.join(tempDir, 'node_modules/@test'));
+      await fs.ensureSymlink(
+        path.resolve(__dirname, 'fixtures/ref-package'),
+        path.join(tempDir, 'node_modules/@test/ref-package')
+      );
+
+      await fs.writeJson(path.join(tempDir, 'package.json'), {
+        name: '@test/file',
+        description: 'File component',
+        version: '1.0.0'
+      });
+
+      await fs.writeFile(path.join(tempDir, 'doc/summary.md'), 'Summary');
+      await fs.writeFile(path.join(tempDir, 'doc/api.md'), '### API\n\nAPI');
+
+      await fs.writeJson(path.join(tempDir, 'doc/example.json'), {
+        list: [
+          {
+            reference: '@test/ref-package',
+            path: 'list[0]',
+            title: '文件地址获取'
+          }
+        ]
+      });
+
+      const result = await stringify({ baseDir: tempDir, output: false });
+
+      expect(result.data.example.list).to.have.lengthOf(1);
+      expect(result.data.example.list[0].title).to.equal('文件地址获取');
+      expect(result.readme).to.include('文件地址获取');
+      expect(result.readme).to.include('render');
+    });
+  });
+
+  describe('mergeAppendExamplesIntoReadme', () => {
+    const referenceReadme = `# table-page
+
+### 描述
+
+A table page component.
+
+### 概述
+
+Overview content.
+
+### 示例
+
+#### 示例代码
+
+- 基础示例
+- 引用包自带示例
+- _TablePage(@kne/table-page)
+
+\`\`\`jsx
+const { default: TablePage } = _TablePage;
+render(<TablePage />);
+\`\`\`
+
+### API
+
+### TablePage
+
+API content here.`;
+
+    it('应该将本地示例追加到 reference README 的示例列表末尾', () => {
+      const appendList = [
+        {
+          title: 'Features 权限控制',
+          description: '展示 featureId 与 hiddenColumns',
+          code: 'const App = () => <div>Features</div>;',
+          scope: [{ name: '_Global', packageName: '@components/Global' }]
+        }
+      ];
+
+      const merged = mergeAppendExamplesIntoReadme(referenceReadme, appendList);
+      const parsed = parse(merged);
+
+      expect(parsed.example.list).to.have.lengthOf(2);
+      expect(parsed.example.list[0].title).to.equal('基础示例');
+      expect(parsed.example.list[1].title).to.equal('Features 权限控制');
+      expect(parsed.example.list[1].code).to.include('Features');
+      expect(merged.lastIndexOf('Features 权限控制')).to.be.lessThan(merged.indexOf('### API'));
+    });
+
+    it('appendList 为空时应该原样返回 README', () => {
+      const merged = mergeAppendExamplesIntoReadme(referenceReadme, []);
+      expect(merged).to.equal(referenceReadme);
+    });
+
+    it('引用 README 没有示例代码区块时应该插入到 API 之前', () => {
+      const readmeWithoutExamples = `# demo
+
+### 概述
+
+Summary
+
+### 示例
+
+### API
+
+API content.`;
+
+      const merged = mergeAppendExamplesIntoReadme(readmeWithoutExamples, [
+        {
+          title: '追加示例',
+          description: '本地追加',
+          code: '<div>append</div>',
+          scope: []
+        }
+      ]);
+
+      const parsed = parse(merged);
+      expect(parsed.example.list).to.have.lengthOf(1);
+      expect(parsed.example.list[0].title).to.equal('追加示例');
+      expect(merged).to.match(/追加示例[\s\S]*### API/);
     });
   });
 

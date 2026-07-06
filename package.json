@@ -1,7 +1,7 @@
 {
   "name": "@kne/md-doc",
   "description": "转换readme.md文件",
-  "version": "0.1.19",
+  "version": "0.1.20",
   "main": "index.js",
   "bin": {
     "create-md": "bin.js"
@@ -42,6 +42,7 @@
   "author": "linzp",
   "license": "ISC",
   "devDependencies": {
+    "@test/ref-package": "file:test/fixtures/ref-package",
     "chai": "^6.2.2",
     "husky": "^9.0.11",
     "mocha": "^11.7.5",

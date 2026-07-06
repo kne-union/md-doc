@@ -1,0 +1,15 @@
+{
+  "list": [
+    {
+      "title": "引用示例",
+      "description": "来自引用包的示例",
+      "code": "./base.js",
+      "scope": [
+        {
+          "name": "_Ref",
+          "packageName": "@test/ref-package"
+        }
+      ]
+    }
+  ]
+}
