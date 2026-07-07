@@ -876,9 +876,9 @@ API content.`;
       });
 
       expect(output).to.include('isFull: true');
-      expect(output).to.match(/title: `全屏示例`[\s\S]*?isFull: true/);
-      expect(output).to.match(/title: `普通示例`[\s\S]*?code: `render\(<div \/>\);`/);
-      const normalBlock = output.match(/title: `普通示例`[\s\S]*?scope: \[/)[0];
+      expect(output).to.match(/title: "全屏示例"[\s\S]*?isFull: true/);
+      expect(output).to.match(/title: "普通示例"[\s\S]*?code: "render\(<div \/>\);"/);
+      const normalBlock = output.match(/title: "普通示例"[\s\S]*?scope: \[/)[0];
       expect(normalBlock).to.not.include('isFull: true');
       expect(output).to.include('example: {\n        isFull: false,');
     });
@@ -914,6 +914,42 @@ render(<div />);
 
       expect(parsed.example.list[0]).to.have.property('isFull', true);
       expect(output).to.include('isFull: true');
+    });
+
+    it('生成的 readmeConfig 应支持 JSX 内嵌套模板字符串', () => {
+      const nestedCode = [
+        'const Component = () => (',
+        '  <div>',
+        '    <style>{`',
+        '      .media-demo-box { color: red; }',
+        '    `}</style>',
+        '  </div>',
+        ');',
+        'render(<Component />);'
+      ].join('\n');
+
+      const output = generateReadmeConfig({
+        name: 'Demo',
+        summary: 'summary',
+        api: 'api',
+        example: {
+          list: [{
+            title: '媒体查询',
+            description: '嵌套反引号',
+            code: nestedCode,
+            scope: []
+          }]
+        }
+      });
+
+      expect(output).to.include('code: "const Component');
+      expect(() => {
+        // eslint-disable-next-line no-new-func
+        new Function(output.replace('export default readmeConfig;', 'return readmeConfig;'))();
+      }).to.not.throw();
+
+      const readmeConfig = new Function(output.replace('export default readmeConfig;', 'return readmeConfig;'))();
+      expect(readmeConfig.example.list[0].code).to.equal(nestedCode);
     });
   });
 });

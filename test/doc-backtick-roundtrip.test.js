@@ -2,7 +2,7 @@ const { expect } = require('chai');
 const fs = require('fs-extra');
 const path = require('path');
 const os = require('os');
-const { stringify, parse } = require('../index');
+const { stringify, parse, generateReadmeConfig } = require('../index');
 
 const EXAMPLE_DRIVER_ROOT = path.resolve(__dirname, '../../example-driver');
 const EXAMPLE_DRIVER_DOC = path.join(EXAMPLE_DRIVER_ROOT, 'doc');
@@ -39,11 +39,23 @@ const assertParsedCodeMatchesSource = (parsedCode, sourceCode, label) => {
   ).to.equal(countChar(sourceCode, '`'));
 };
 
-/** 模拟 modules-dev readme-generator 将 code 嵌入模板字符串 */
+/** 模拟 modules-dev readme-generator 将 code 嵌入 readmeConfig */
 const embedCodeLikeReadmeGenerator = (code) => {
-  const escaped = (code || '').toString().replace(/\$/g, '\\$').replace(/`/g, '\\`');
+  const output = generateReadmeConfig({
+    name: 'Test',
+    summary: 'summary',
+    api: 'api',
+    example: {
+      list: [{
+        title: 'test',
+        description: 'desc',
+        code,
+        scope: []
+      }]
+    }
+  });
   // eslint-disable-next-line no-new-func
-  return Function(`return \`${escaped}\`;`)();
+  return new Function(output.replace('export default readmeConfig;', 'return readmeConfig;'))().example.list[0].code;
 };
 
 describe('md-doc doc 示例反引号往返', () => {
