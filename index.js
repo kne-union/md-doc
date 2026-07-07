@@ -379,6 +379,8 @@ const escapeTemplateString = (value) =>
     .replace(/\$/g, '\\$')
     .replace(/`/g, '\\`');
 
+const toJsStringLiteral = (value) => JSON.stringify(value == null ? '' : String(value));
+
 const buildReadmeConfigImports = (exampleList = []) => {
   const importList = [];
   const mapping = {};
@@ -424,11 +426,11 @@ const generateReadmeConfig = (readme) => {
         .join(',');
 
       return `{
-    title: \`${item.title}\`,
-    description: \`${item.description}\`,${item.isFull === true ? `
+    title: ${toJsStringLiteral(item.title)},
+    description: ${toJsStringLiteral(item.description)},${item.isFull === true ? `
     isFull: true,` : ''}${item.devicePreview === false ? `
     devicePreview: false,` : ''}
-    code: \`${escapeTemplateString(item.code)}\`,
+    code: ${toJsStringLiteral(item.code)},
     scope: [${scopeItems}]
 }`;
     })
@@ -436,16 +438,16 @@ const generateReadmeConfig = (readme) => {
 
   return `${importList.join('\n')}
 const readmeConfig = {
-    name: \`${readme.name || ''}\`,
-    summary: \`${readme.summary}\`,
-    ${readme.description ? `description: \`${readme.description}\`,` : ''}
-    ${readme.packageName ? `packageName: \`${readme.packageName}\`,` : ''}
-    api: \`${readme.api}\`,
+    name: ${toJsStringLiteral(readme.name || '')},
+    summary: ${toJsStringLiteral(readme.summary)},
+    ${readme.description ? `description: ${toJsStringLiteral(readme.description)},` : ''}
+    ${readme.packageName ? `packageName: ${toJsStringLiteral(readme.packageName)},` : ''}
+    api: ${toJsStringLiteral(readme.api)},
     example: {
         isFull: ${get(readme, 'example.isFull') === true},${get(readme, 'example.devicePreview') === false ? `
         devicePreview: false,` : ''}
-        className: \`${get(readme, 'example.className') || ''}\`,
-        style: \`${get(readme, 'example.style') || ''}\`,
+        className: ${toJsStringLiteral(get(readme, 'example.className') || '')},
+        style: ${toJsStringLiteral(get(readme, 'example.style') || '')},
         list: [${listItems}]
     }
 };
