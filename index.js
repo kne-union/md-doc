@@ -141,7 +141,61 @@ const generateStyleId = (name) => {
   return styleId;
 };
 
-const styleTransform = (name, styleString) => {
+const ROOT_SCSS_AT_RULE_RE = /^\s*@(use|forward|import)\s+/;
+
+const splitRootScssAtRules = (styleString) => {
+  const preamble = [];
+  const body = [];
+  let stillPreamble = true;
+
+  for (const line of styleString.split('\n')) {
+    const trimmed = line.trim();
+    if (stillPreamble) {
+      if (trimmed === '' || trimmed.startsWith('//') || ROOT_SCSS_AT_RULE_RE.test(line)) {
+        preamble.push(line);
+        continue;
+      }
+      stillPreamble = false;
+    }
+    body.push(line);
+  }
+
+  return {
+    preamble: preamble.join('\n').replace(/\n+$/, ''),
+    body: body.join('\n').trim()
+  };
+};
+
+const normalizeTildeImports = (source) => {
+  return source.replace(/@(?:(use|forward|import))\s+(['"])~([^'"]+)\2/g, '@$1 $2$3$2');
+};
+
+const getStyleLoadPaths = (baseDir = DEFAULT_BASE_DIR) => {
+  const paths = [];
+  let current = path.resolve(baseDir);
+  const root = path.parse(current).root;
+
+  while (current && current !== root) {
+    paths.push(path.join(current, 'node_modules'));
+    current = path.dirname(current);
+  }
+
+  return paths;
+};
+
+const buildScopedStyleSource = (styleId, styleString) => {
+  const source = unescape(styleString);
+  const { preamble, body } = splitRootScssAtRules(source);
+
+  if (!body) {
+    return normalizeTildeImports(preamble);
+  }
+
+  const scopedBody = `.${styleId} {\n${body}\n}`;
+  return normalizeTildeImports(preamble ? `${preamble}\n\n${scopedBody}` : scopedBody);
+};
+
+const styleTransform = (name, styleString, options = {}) => {
   const output = { className: '', style: '' };
   
   if (!styleString || typeof styleString !== 'string') {
@@ -157,7 +211,9 @@ const styleTransform = (name, styleString) => {
   }
   
   try {
-    const result = sass.compileString(`.${styleId}{${unescape(styleString)}}`);
+    const result = sass.compileString(buildScopedStyleSource(styleId, styleString), {
+      loadPaths: getStyleLoadPaths(options.baseDir)
+    });
     output.style = result.css;
   } catch (error) {
     console.warn('样式编译失败:', error.message);
@@ -366,7 +422,7 @@ const formatOutputData = (data, options) => {
     summary: data.summary || '',
     summaryMD: md.render(data.summary || ''),
     style: (data.style || '').trim(),
-    styleObject: styleTransform(name, data.style),
+    styleObject: styleTransform(name, data.style, { baseDir: options.baseDir }),
     example: data.example || {},
     api: data.api || '',
     apiMd: md.render(data.api || '')

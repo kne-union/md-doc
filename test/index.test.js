@@ -59,6 +59,31 @@ describe('md-doc', () => {
       expect(result.className).to.not.include('/');
       expect(result.className).to.include('_test_component_name_');
     });
+
+    it('应该支持顶层 @use 与 mixin，并保留作用域 className', () => {
+      const styleString = [
+        "@use '@kne/responsive-utils/scss' as resp;",
+        '',
+        '.media-demo-box {',
+        '  color: blue;',
+        '}',
+        '',
+        '@include resp.mobile-container {',
+        '  .media-demo-box {',
+        '    color: green;',
+        '  }',
+        '}'
+      ].join('\n');
+
+      const result = styleTransform('example-driver', styleString, {
+        baseDir: path.resolve(__dirname, '..', '..', 'example-driver')
+      });
+
+      expect(result.style).to.be.a('string');
+      expect(result.style).to.include('@container kne-responsive');
+      expect(result.style).to.include('color: green');
+      expect(result.style).to.include(`.${result.className} .media-demo-box`);
+    });
   });
 
   describe('parse', () => {
