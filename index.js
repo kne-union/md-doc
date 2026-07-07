@@ -26,6 +26,69 @@ const MD_TITLES = {
 };
 
 const ITEM_FULL_SUFFIX = '(全屏)';
+const ITEM_DEVICE_PREVIEW_OFF_SUFFIX = '(×)';
+
+const parseItemTitleMeta = (rawTitle) => {
+  let title = rawTitle;
+  let isFull = false;
+  let devicePreview = true;
+
+  while (true) {
+    if (title.endsWith(ITEM_DEVICE_PREVIEW_OFF_SUFFIX)) {
+      devicePreview = false;
+      title = title.slice(0, -ITEM_DEVICE_PREVIEW_OFF_SUFFIX.length);
+      continue;
+    }
+    if (title.endsWith(ITEM_FULL_SUFFIX)) {
+      isFull = true;
+      title = title.slice(0, -ITEM_FULL_SUFFIX.length);
+      continue;
+    }
+    break;
+  }
+
+  return { title, isFull, devicePreview };
+};
+
+const buildItemTitleWithSuffixes = ({ title, isFull, devicePreview }) => {
+  return `${title}${isFull ? ITEM_FULL_SUFFIX : ''}${devicePreview === false ? ITEM_DEVICE_PREVIEW_OFF_SUFFIX : ''}`;
+};
+
+const parseExampleSectionTitle = (text) => {
+  if (!text || !text.startsWith(MD_TITLES.EXAMPLE)) {
+    return null;
+  }
+
+  let rest = text.slice(MD_TITLES.EXAMPLE.length);
+  let isFull = false;
+  let devicePreview = true;
+
+  while (rest.length) {
+    if (rest.startsWith(ITEM_FULL_SUFFIX)) {
+      isFull = true;
+      rest = rest.slice(ITEM_FULL_SUFFIX.length);
+      continue;
+    }
+    if (rest.startsWith(ITEM_DEVICE_PREVIEW_OFF_SUFFIX)) {
+      devicePreview = false;
+      rest = rest.slice(ITEM_DEVICE_PREVIEW_OFF_SUFFIX.length);
+      continue;
+    }
+    return null;
+  }
+
+  return { isFull, devicePreview };
+};
+
+const findExampleTitleIndex = ($domList) => {
+  for (let i = 0; i < $domList.length; i++) {
+    const $el = $($domList[i]);
+    if ($el.is('h3') && parseExampleSectionTitle($el.text().trim())) {
+      return i;
+    }
+  }
+  return -1;
+};
 
 // 初始化 jQuery
 const { document } = (new JSDOM()).window;
@@ -339,7 +402,7 @@ const buildReadmeConfigImports = (exampleList = []) => {
 
 /**
  * 将 parse/stringify 的结构化文档转为 modules-dev 示例页使用的 readmeConfig 模块源码。
- * 须保留 example.list[].isFull，供 @kne/example-driver 单条示例全宽展示。
+ * 须保留 example.list[].isFull、devicePreview，供 @kne/example-driver 使用。
  */
 const generateReadmeConfig = (readme) => {
   const exampleList = get(readme, 'example.list', []) || [];
@@ -363,7 +426,8 @@ const generateReadmeConfig = (readme) => {
       return `{
     title: \`${item.title}\`,
     description: \`${item.description}\`,${item.isFull === true ? `
-    isFull: true,` : ''}
+    isFull: true,` : ''}${item.devicePreview === false ? `
+    devicePreview: false,` : ''}
     code: \`${escapeTemplateString(item.code)}\`,
     scope: [${scopeItems}]
 }`;
@@ -378,7 +442,8 @@ const readmeConfig = {
     ${readme.packageName ? `packageName: \`${readme.packageName}\`,` : ''}
     api: \`${readme.api}\`,
     example: {
-        isFull: ${get(readme, 'example.isFull') === true},
+        isFull: ${get(readme, 'example.isFull') === true},${get(readme, 'example.devicePreview') === false ? `
+        devicePreview: false,` : ''}
         className: \`${get(readme, 'example.className') || ''}\`,
         style: \`${get(readme, 'example.style') || ''}\`,
         list: [${listItems}]
@@ -395,11 +460,11 @@ const escapeCodeBlock = (code) => {
   return code.replace(/`/g, '&#96;');
 };
 
-const buildExampleItemMarkdown = ({ title, description, code, scope, isFull }) => {
+const buildExampleItemMarkdown = ({ title, description, code, scope, isFull, devicePreview }) => {
   const scopeStr = (scope || []).map(({ name, importStatement, packageName }) => {
     return `${name || ''}(${packageName})${importStatement ? `[${importStatement}]` : ''}`;
   }).join(',');
-  return `- ${title}${isFull ? ITEM_FULL_SUFFIX : ''}\n- ${description}\n- ${scopeStr}\n\n\`\`\`jsx\n${escapeCodeBlock(code)}\n\`\`\``;
+  return `- ${buildItemTitleWithSuffixes({ title, isFull, devicePreview })}\n- ${description}\n- ${scopeStr}\n\n\`\`\`jsx\n${escapeCodeBlock(code)}\n\`\`\``;
 };
 
 const buildExampleCodeSection = (exampleList) => {
@@ -457,6 +522,7 @@ const generateReadme = (outputData) => {
   const hasPackageName = packageName && packageName.trim();
   const hasSummary = summary && summary.trim();
   const isFull = get(example, 'isFull') === true;
+  const devicePreview = get(example, 'devicePreview');
   const hasStyle = style && style.trim();
   const exampleList = get(example, 'list', []);
   const hasExamples = Array.isArray(exampleList) && exampleList.length > 0;
@@ -475,7 +541,7 @@ const generateReadme = (outputData) => {
     content += `### 概述\n\n${summary}\n\n`;
   }
   
-  content += `### 示例${isFull ? '(全屏)' : ''}\n\n`;
+  content += `### ${buildItemTitleWithSuffixes({ title: MD_TITLES.EXAMPLE, isFull, devicePreview })}\n\n`;
   
   if (hasStyle) {
     content += `#### 示例样式\n\n\`\`\`scss\n${style}\n\`\`\`\n\n`;
@@ -572,15 +638,14 @@ const parseExampleProps = ($domList, exampleIndex, apiTitleIndex) => {
         output.push($(li).text());
       });
       
-      const rawTitle = output[0] || '';
-      const isFull = rawTitle.endsWith(ITEM_FULL_SUFFIX);
-      const title = isFull ? rawTitle.slice(0, -ITEM_FULL_SUFFIX.length) : rawTitle;
+      const { title, isFull, devicePreview } = parseItemTitleMeta(output[0] || '');
 
       props.push({
         title,
         description: output[1] || '',
         scope: parseScopeString(output[2]),
-        ...(isFull ? { isFull: true } : {})
+        ...(isFull ? { isFull: true } : {}),
+        ...(devicePreview === false ? { devicePreview: false } : {})
       });
     }
   });
@@ -627,9 +692,7 @@ const parse = (text) => {
   
   // 查找各部分标题索引
   const summaryTitleIndex = findTitleIndex($domList, 'h3', MD_TITLES.SUMMARY);
-  const exampleTitleIndex = findTitleIndex($domList, 'h3', MD_TITLES.EXAMPLE) >= 0 
-    ? findTitleIndex($domList, 'h3', MD_TITLES.EXAMPLE)
-    : findTitleIndex($domList, 'h3', MD_TITLES.EXAMPLE_FULL);
+  const exampleTitleIndex = findExampleTitleIndex($domList);
   const apiTitleIndex = findTitleIndex($domList, 'h3', MD_TITLES.API);
   
   // 解析概述内容
@@ -648,7 +711,17 @@ const parse = (text) => {
   
   // 解析示例信息
   data.example = {};
-  data.example.isFull = findTitleIndex($domList, 'h3', MD_TITLES.EXAMPLE_FULL) >= 0;
+  if (exampleTitleIndex >= 0) {
+    const exampleMeta = parseExampleSectionTitle($($domList[exampleTitleIndex]).text().trim()) || {
+      isFull: false,
+      devicePreview: true
+    };
+    data.example.isFull = exampleMeta.isFull;
+    data.example.devicePreview = exampleMeta.devicePreview;
+  } else {
+    data.example.isFull = false;
+    data.example.devicePreview = true;
+  }
   
   // 解析样式
   const exampleStyleIndex = findTitleIndex($domList, 'h4', MD_TITLES.EXAMPLE_STYLE);
@@ -687,5 +760,8 @@ module.exports = {
   loadReferencedExample,
   normalizeCurrentLibPlaceholder,
   normalizeReferencedExample,
-  ITEM_FULL_SUFFIX
+  ITEM_FULL_SUFFIX,
+  ITEM_DEVICE_PREVIEW_OFF_SUFFIX,
+  parseItemTitleMeta,
+  buildItemTitleWithSuffixes
 };
