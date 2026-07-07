@@ -310,6 +310,84 @@ const formatOutputData = (data, options) => {
   };
 };
 
+const escapeTemplateString = (value) =>
+  (value || '')
+    .toString()
+    .replace(/\$/g, '\\$')
+    .replace(/`/g, '\\`');
+
+const buildReadmeConfigImports = (exampleList = []) => {
+  const importList = [];
+  const mapping = {};
+  let componentIndex = 0;
+
+  exampleList.forEach(({ scope }) => {
+    (scope || []).forEach(({ name, packageName }) => {
+      if (!packageName || mapping[packageName]) {
+        return;
+      }
+      const key = `component_${++componentIndex}`;
+      importList.push(name ? `import * as ${key} from '${packageName}';` : `import '${packageName}';`);
+      if (name) {
+        mapping[packageName] = key;
+      }
+    });
+  });
+
+  return { importList, mapping };
+};
+
+/**
+ * 将 parse/stringify 的结构化文档转为 modules-dev 示例页使用的 readmeConfig 模块源码。
+ * 须保留 example.list[].isFull，供 @kne/example-driver 单条示例全宽展示。
+ */
+const generateReadmeConfig = (readme) => {
+  const exampleList = get(readme, 'example.list', []) || [];
+
+  const { importList, mapping } = buildReadmeConfigImports(exampleList);
+
+  const listItems = exampleList
+    .map((item) => {
+      const scopeItems = (item.scope || [])
+        .filter(({ name }) => !!name)
+        .map(({ name, importStatement, packageName }) => {
+          return `{
+    name: "${name}",
+    packageName: "${packageName}",${importStatement ? `
+    importStatement: "${importStatement.replace(/"/g, '\\"')}",` : ''}
+    component: ${mapping[packageName]}
+}`;
+        })
+        .join(',');
+
+      return `{
+    title: \`${item.title}\`,
+    description: \`${item.description}\`,${item.isFull === true ? `
+    isFull: true,` : ''}
+    code: \`${escapeTemplateString(item.code)}\`,
+    scope: [${scopeItems}]
+}`;
+    })
+    .join(',');
+
+  return `${importList.join('\n')}
+const readmeConfig = {
+    name: \`${readme.name || ''}\`,
+    summary: \`${readme.summary}\`,
+    ${readme.description ? `description: \`${readme.description}\`,` : ''}
+    ${readme.packageName ? `packageName: \`${readme.packageName}\`,` : ''}
+    api: \`${readme.api}\`,
+    example: {
+        isFull: ${get(readme, 'example.isFull') === true},
+        className: \`${get(readme, 'example.className') || ''}\`,
+        style: \`${get(readme, 'example.style') || ''}\`,
+        list: [${listItems}]
+    }
+};
+export default readmeConfig;
+`;
+};
+
 // 转义代码块中的反引号
 const escapeCodeBlock = (code) => {
   if (!code) return code;
@@ -603,9 +681,11 @@ module.exports = {
   styleTransform,
   mergeAppendExamplesIntoReadme,
   buildExampleCodeSection,
+  generateReadmeConfig,
   resolvePath,
   resolveExampleListReferences,
   loadReferencedExample,
   normalizeCurrentLibPlaceholder,
-  normalizeReferencedExample
+  normalizeReferencedExample,
+  ITEM_FULL_SUFFIX
 };

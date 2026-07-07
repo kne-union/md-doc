@@ -2,7 +2,7 @@ const { expect } = require('chai');
 const fs = require('fs-extra');
 const path = require('path');
 const os = require('os');
-const { stringify, parse, styleTransform, mergeAppendExamplesIntoReadme, resolvePath, resolveExampleListReferences, loadReferencedExample, normalizeCurrentLibPlaceholder } = require('../index');
+const { stringify, parse, styleTransform, mergeAppendExamplesIntoReadme, resolvePath, resolveExampleListReferences, loadReferencedExample, normalizeCurrentLibPlaceholder, generateReadmeConfig } = require('../index');
 
 describe('md-doc', () => {
   let tempDir;
@@ -846,6 +846,74 @@ API content.`;
       expect(parsed.example.list).to.have.lengthOf(1);
       expect(parsed.example.list[0].title).to.equal('Test Example');
       expect(parsed.example.list[0].code).to.include('Test');
+    });
+  });
+
+  describe('generateReadmeConfig', () => {
+    it('应保留 example.list[].isFull 供 example-driver 全宽展示', () => {
+      const output = generateReadmeConfig({
+        name: 'Demo',
+        summary: 'summary',
+        api: 'api',
+        example: {
+          isFull: false,
+          list: [
+            {
+              title: '普通示例',
+              description: '普通',
+              code: 'render(<div />);',
+              scope: [{ name: '_Demo', packageName: '@components/Demo' }]
+            },
+            {
+              title: '全屏示例',
+              description: '全屏',
+              code: 'render(<div />);',
+              isFull: true,
+              scope: [{ name: '_Demo', packageName: '@components/Demo' }]
+            }
+          ]
+        }
+      });
+
+      expect(output).to.include('isFull: true');
+      expect(output).to.match(/title: `全屏示例`[\s\S]*?isFull: true/);
+      expect(output).to.match(/title: `普通示例`[\s\S]*?code: `render\(<div \/>\);`/);
+      const normalBlock = output.match(/title: `普通示例`[\s\S]*?scope: \[/)[0];
+      expect(normalBlock).to.not.include('isFull: true');
+      expect(output).to.include('example: {\n        isFull: false,');
+    });
+
+    it('parse 后生成的 readmeConfig 应保留单条 isFull', () => {
+      const md = `# Demo
+
+### 概述
+
+Summary
+
+### 示例
+
+#### 示例代码
+
+- 全屏标题(全屏)
+- 全屏描述
+- _Demo(@components/Demo)
+
+\`\`\`jsx
+render(<div />);
+\`\`\`
+
+### API`;
+
+      const parsed = parse(md);
+      const output = generateReadmeConfig({
+        name: parsed.name,
+        summary: parsed.summary,
+        api: parsed.api,
+        example: parsed.example
+      });
+
+      expect(parsed.example.list[0]).to.have.property('isFull', true);
+      expect(output).to.include('isFull: true');
     });
   });
 });

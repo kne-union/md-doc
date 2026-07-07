@@ -115,6 +115,27 @@ README 中 scope 行格式：`_Button(@components/Button)[import ...],antd(antd)
 
 ---
 
+### generateReadmeConfig
+
+将 `parse` / `stringify` 得到的结构化文档转为 **modules-dev 示例页**使用的 `readmeConfig` 模块源码（供 `readme-loader` 调用）。
+
+#### 参数
+
+| 参数名 | 说明 | 类型 |
+|--------|------|------|
+| readme | 含 `name`、`summary`、`api`、`example` 等字段的对象 | object |
+
+#### 返回值
+
+可执行的 ES 模块源码字符串，默认导出 `readmeConfig`。
+
+#### 注意
+
+- 根级 `example.isFull` 与 `list[].isFull` 均会写入输出；后者供 `@kne/example-driver` 在双列布局下单条示例置顶全宽展示。
+- `example.json` 中 `list[].isFull: true` 经 `stringify` 写入 README 标题后缀 `(全屏)`，再经 `parse` → `generateReadmeConfig` 还原为 `isFull: true`。
+
+---
+
 ### resolvePath
 
 按路径表达式从对象中取值，用于解析 `example.json` 中的 `path` 字段。
