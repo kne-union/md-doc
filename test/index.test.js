@@ -2,7 +2,7 @@ const { expect } = require('chai');
 const fs = require('fs-extra');
 const path = require('path');
 const os = require('os');
-const { stringify, parse, styleTransform, mergeAppendExamplesIntoReadme, resolvePath, resolveExampleListReferences, loadReferencedExample, normalizeCurrentLibPlaceholder, generateReadmeConfig } = require('../index');
+const { stringify, parse, styleTransform, mergeAppendExamplesIntoReadme, resolvePath, resolveExampleListReferences, loadReferencedExample, normalizeCurrentLibPlaceholder, generateReadmeConfig, demoteMarkdownHeadings } = require('../index');
 
 describe('md-doc', () => {
   let tempDir;
@@ -16,6 +16,29 @@ describe('md-doc', () => {
   afterEach(async () => {
     // 清理临时目录
     await fs.remove(tempDir);
+  });
+
+  describe('demoteMarkdownHeadings', () => {
+    it('正文标题级别不高于区块时整体降级', () => {
+      const input = '# A\n\n## B\n\ntext';
+      expect(demoteMarkdownHeadings(input, 3)).to.equal('#### A\n\n##### B\n\ntext');
+    });
+
+    it('正文标题已低于区块时不改动', () => {
+      const input = '#### A\n\n##### B';
+      expect(demoteMarkdownHeadings(input, 3)).to.equal(input);
+    });
+
+    it('与区块同级的标题也需降级', () => {
+      const input = '### stringify\n\nAPI docs';
+      expect(demoteMarkdownHeadings(input, 3)).to.equal('#### stringify\n\nAPI docs');
+    });
+
+    it('不处理代码围栏内的 #', () => {
+      const input = '### Out\n\n```js\n# not a heading\n```\n\n## In';
+      // minLevel=2 → offset=2：###→#####，##→####；围栏内不变
+      expect(demoteMarkdownHeadings(input, 3)).to.equal('##### Out\n\n```js\n# not a heading\n```\n\n#### In');
+    });
   });
 
   describe('styleTransform', () => {
@@ -411,6 +434,8 @@ line3\`;`;
       const result = parse('');
 
       expect(result.name).to.equal('');
+      expect(result.description).to.equal('');
+      expect(result.keywords).to.deep.equal([]);
       expect(result.summary).to.equal('');
       expect(result.api).to.equal('');
       expect(result.example.list).to.be.an('array');
@@ -806,15 +831,148 @@ API content.`;
       expect(result).to.have.property('readme');
     });
 
+    it('API/概述正文中的标题应降到区块标题之下', async () => {
+      await fs.writeFile(
+        path.join(tempDir, 'doc/summary.md'),
+        '## 特性\n\n概述内容'
+      );
+      await fs.writeFile(
+        path.join(tempDir, 'doc/api.md'),
+        '### stringify\n\nAPI documentation here.'
+      );
+
+      const { readme } = await stringify({ baseDir: tempDir, output: false });
+
+      expect(readme).to.match(/### 概述\n\n#### 特性/);
+      expect(readme).to.match(/### API\n\n#### stringify/);
+      expect(readme).to.not.match(/### API\n\n### stringify/);
+    });
+
     it('返回的 data 应该包含完整的结构', async () => {
       const result = await stringify({ baseDir: tempDir, output: false });
 
-      expect(result.data).to.have.all.keys('name', 'description', 'summary', 'example', 'api');
+      expect(result.data).to.have.all.keys('name', 'description', 'keywords', 'summary', 'example', 'api');
       expect(result.data.name).to.equal('component');
       expect(result.data.description).to.equal('Test component');
+      expect(result.data.keywords).to.deep.equal([]);
       expect(result.data.summary).to.be.a('string');
       expect(result.data.api).to.be.a('string');
       expect(result.data.example).to.be.an('object');
+    });
+
+    it('应该输出 package.json keywords 到独立「关键词」标题', async () => {
+      await fs.writeJson(path.join(tempDir, 'package.json'), {
+        name: '@test/component',
+        description: 'Test component',
+        keywords: ['react', 'form', 'ui'],
+        version: '1.0.0'
+      });
+
+      const { readme, data } = await stringify({ baseDir: tempDir, output: false });
+
+      expect(readme).to.include('### 描述');
+      expect(readme).to.include('Test component');
+      expect(readme).to.include('### 关键词');
+      expect(readme).to.include('react, form, ui');
+      expect(data.keywords).to.deep.equal(['react', 'form', 'ui']);
+    });
+
+    it('仅有 keywords 时只输出「关键词」标题', async () => {
+      await fs.writeJson(path.join(tempDir, 'package.json'), {
+        name: '@test/component',
+        keywords: ['a', 'b'],
+        version: '1.0.0'
+      });
+
+      const { readme } = await stringify({ baseDir: tempDir, output: false });
+
+      expect(readme).to.not.include('### 描述');
+      expect(readme).to.include('### 关键词');
+      expect(readme).to.include('a, b');
+    });
+
+    it('description 与 keywords 皆无时不输出对应标题', async () => {
+      await fs.writeJson(path.join(tempDir, 'package.json'), {
+        name: '@test/component',
+        version: '1.0.0'
+      });
+
+      const { readme } = await stringify({ baseDir: tempDir, output: false });
+
+      expect(readme).to.not.include('### 描述');
+      expect(readme).to.not.include('### 关键词');
+    });
+
+    it('示例 keywords 应写在 description 后并可被 parse', async () => {
+      await fs.writeJson(path.join(tempDir, 'doc/example.json'), {
+        list: [
+          {
+            title: '带关键词',
+            description: '示例说明',
+            keywords: ['demo', 'basic'],
+            code: 'kw-example.js',
+            scope: [{ name: 'Button', packageName: 'antd' }]
+          }
+        ]
+      });
+      await fs.writeFile(path.join(tempDir, 'doc/kw-example.js'), '<Button />');
+
+      const { readme } = await stringify({ baseDir: tempDir, output: false });
+      expect(readme).to.match(/- 示例说明\n- 关键词：demo, basic\n- Button\(antd\)/);
+
+      const parsed = parse(readme);
+      expect(parsed.example.list[0].keywords).to.deep.equal(['demo', 'basic']);
+      expect(parsed.example.list[0].scope).to.deep.equal([{ name: 'Button', packageName: 'antd' }]);
+    });
+
+    it('旧版 3 行示例格式 parse 后无 keywords', () => {
+      const md = `# Demo
+
+### 示例
+
+#### 示例代码
+
+- 标题
+- 描述
+- Button(antd)
+
+\`\`\`jsx
+<code />
+\`\`\`
+
+### API
+
+api
+`;
+      const parsed = parse(md);
+      expect(parsed.example.list[0]).to.not.have.property('keywords');
+      expect(parsed.example.list[0].scope).to.deep.equal([{ name: 'Button', packageName: 'antd' }]);
+    });
+
+    it('parse 应读取包级描述与关键词标题', () => {
+      const md = `# Demo
+
+### 描述
+
+包描述文案
+
+### 关键词
+
+react, form
+
+### 概述
+
+概述
+
+### 示例
+
+### API
+
+api
+`;
+      const parsed = parse(md);
+      expect(parsed.description).to.equal('包描述文案');
+      expect(parsed.keywords).to.deep.equal(['react', 'form']);
     });
   });
 
@@ -824,6 +982,7 @@ API content.`;
       await fs.writeJson(path.join(tempDir, 'package.json'), {
         name: '@test/integration',
         description: 'Integration test',
+        keywords: ['integration', 'md-doc'],
         version: '1.0.0'
       });
 
@@ -842,6 +1001,7 @@ API content.`;
           {
             title: 'Test Example',
             description: 'Test description',
+            keywords: ['example', 'roundtrip'],
             code: 'example.jsx',
             scope: [
               { name: 'Button', packageName: 'antd' }
@@ -866,10 +1026,14 @@ API content.`;
 
       // 验证
       expect(parsed.name).to.equal('integration');
+      expect(parsed.description).to.equal('Integration test');
+      expect(parsed.keywords).to.deep.equal(['integration', 'md-doc']);
       expect(parsed.summary).to.include('Summary content here');
       expect(parsed.api).to.include('API documentation');
       expect(parsed.example.list).to.have.lengthOf(1);
       expect(parsed.example.list[0].title).to.equal('Test Example');
+      expect(parsed.example.list[0].description).to.equal('Test description');
+      expect(parsed.example.list[0].keywords).to.deep.equal(['example', 'roundtrip']);
       expect(parsed.example.list[0].code).to.include('Test');
     });
   });

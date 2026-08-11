@@ -17,6 +17,8 @@ const DOC_FILES = [
 ];
 
 const MD_TITLES = {
+  DESCRIPTION: '描述',
+  KEYWORDS: '关键词',
   SUMMARY: '概述',
   EXAMPLE: '示例',
   EXAMPLE_FULL: '示例(全屏)',
@@ -24,6 +26,8 @@ const MD_TITLES = {
   EXAMPLE_STYLE: '示例样式',
   EXAMPLE_CODE: '示例代码'
 };
+
+const KEYWORDS_LINE_PREFIX_RE = /^关键词\s*[:：]\s*/;
 
 const ITEM_FULL_SUFFIX = '(全屏)';
 const ITEM_DEVICE_PREVIEW_OFF_SUFFIX = '(×)';
@@ -88,6 +92,56 @@ const findExampleTitleIndex = ($domList) => {
     }
   }
   return -1;
+};
+
+const normalizeKeywords = (input) => {
+  if (Array.isArray(input)) {
+    return input.map((item) => String(item).trim()).filter(Boolean);
+  }
+  if (typeof input === 'string' && input.trim()) {
+    return input.split(',').map((item) => item.trim()).filter(Boolean);
+  }
+  return [];
+};
+
+const formatKeywordsBody = (keywords) => normalizeKeywords(keywords).join(', ');
+
+const formatKeywordsLine = (keywords) => {
+  const body = formatKeywordsBody(keywords);
+  return body ? `关键词：${body}` : '';
+};
+
+const parseKeywordsLine = (text) => {
+  if (!text || typeof text !== 'string') {
+    return null;
+  }
+  const trimmed = text.trim();
+  if (!KEYWORDS_LINE_PREFIX_RE.test(trimmed)) {
+    return null;
+  }
+  return normalizeKeywords(trimmed.replace(KEYWORDS_LINE_PREFIX_RE, ''));
+};
+
+const findNextH3Index = ($domList, afterIndex) => {
+  for (let i = afterIndex + 1; i < $domList.length; i++) {
+    if ($($domList[i]).is('h3')) {
+      return i;
+    }
+  }
+  return -1;
+};
+
+const getSectionPlainText = ($domList, startIndex, endIndex) => {
+  if (startIndex < 0) {
+    return '';
+  }
+  const end = endIndex >= 0 ? endIndex : $domList.length;
+  return $domList
+    .slice(startIndex + 1, end)
+    .map((_, el) => $(el).text())
+    .get()
+    .join('\n')
+    .trim();
 };
 
 // 初始化 jQuery（仅用局部 JSDOM，不要污染 global.document；
@@ -419,6 +473,7 @@ const formatOutputData = (data, options) => {
     name,
     packageName: get(data, 'package.name', ''),
     description: get(data, 'package.description', ''),
+    keywords: normalizeKeywords(get(data, 'package.keywords', [])),
     summary: data.summary || '',
     summaryMD: md.render(data.summary || ''),
     style: (data.style || '').trim(),
@@ -485,18 +540,22 @@ const generateReadmeConfig = (readme) => {
     title: ${toJsStringLiteral(item.title)},
     description: ${toJsStringLiteral(item.description)},${item.isFull === true ? `
     isFull: true,` : ''}${item.devicePreview === false ? `
-    devicePreview: false,` : ''}
+    devicePreview: false,` : ''}${Array.isArray(item.keywords) && item.keywords.length ? `
+    keywords: ${JSON.stringify(normalizeKeywords(item.keywords))},` : ''}
     code: ${toJsStringLiteral(item.code)},
     scope: [${scopeItems}]
 }`;
     })
     .join(',');
 
+  const packageKeywords = normalizeKeywords(readme.keywords);
+
   return `${importList.join('\n')}
 const readmeConfig = {
     name: ${toJsStringLiteral(readme.name || '')},
     summary: ${toJsStringLiteral(readme.summary)},
     ${readme.description ? `description: ${toJsStringLiteral(readme.description)},` : ''}
+    ${packageKeywords.length ? `keywords: ${JSON.stringify(packageKeywords)},` : ''}
     ${readme.packageName ? `packageName: ${toJsStringLiteral(readme.packageName)},` : ''}
     api: ${toJsStringLiteral(readme.api)},
     example: {
@@ -518,11 +577,13 @@ const escapeCodeBlock = (code) => {
   return code.replace(/`/g, '&#96;');
 };
 
-const buildExampleItemMarkdown = ({ title, description, code, scope, isFull, devicePreview }) => {
+const buildExampleItemMarkdown = ({ title, description, code, scope, isFull, devicePreview, keywords }) => {
   const scopeStr = (scope || []).map(({ name, importStatement, packageName }) => {
     return `${name || ''}(${packageName})${importStatement ? `[${importStatement}]` : ''}`;
   }).join(',');
-  return `- ${buildItemTitleWithSuffixes({ title, isFull, devicePreview })}\n- ${description}\n- ${scopeStr}\n\n\`\`\`jsx\n${escapeCodeBlock(code)}\n\`\`\``;
+  const normalizedKeywords = normalizeKeywords(keywords);
+  const keywordsLine = normalizedKeywords.length ? `\n- ${formatKeywordsLine(normalizedKeywords)}` : '';
+  return `- ${buildItemTitleWithSuffixes({ title, isFull, devicePreview })}\n- ${description}${keywordsLine}\n- ${scopeStr}\n\n\`\`\`jsx\n${escapeCodeBlock(code)}\n\`\`\``;
 };
 
 const buildExampleCodeSection = (exampleList) => {
@@ -565,18 +626,89 @@ const unescapeCodeBlock = (code) => {
   return unescape(code).replace(/&#96;/g, '`');
 };
 
+const ATX_HEADING_RE = /^(#{1,6})(\s+)(.*)$/;
+const FENCE_RE = /^(\s*)(`{3,}|~{3,})/;
+
+/**
+ * 将 markdown 正文中的标题统一降到 sectionLevel 之下。
+ * 若正文最高级标题（# 最少）级别 <= sectionLevel，则整体偏移，使最高级变为 sectionLevel+1。
+ * 不处理代码围栏内的内容；降级后级别上限为 6。
+ */
+const demoteMarkdownHeadings = (markdown, sectionLevel) => {
+  if (!markdown || typeof markdown !== 'string') {
+    return markdown || '';
+  }
+  if (!Number.isFinite(sectionLevel) || sectionLevel < 1) {
+    return markdown;
+  }
+
+  const lines = markdown.split('\n');
+  let inFence = false;
+  let minLevel = Infinity;
+
+  for (const line of lines) {
+    const fenceMatch = line.match(FENCE_RE);
+    if (fenceMatch && !inFence) {
+      inFence = true;
+      continue;
+    }
+    if (inFence) {
+      if (fenceMatch) {
+        inFence = false;
+      }
+      continue;
+    }
+    const headingMatch = line.match(ATX_HEADING_RE);
+    if (headingMatch) {
+      minLevel = Math.min(minLevel, headingMatch[1].length);
+    }
+  }
+
+  if (!Number.isFinite(minLevel) || minLevel > sectionLevel) {
+    return markdown;
+  }
+
+  const offset = sectionLevel + 1 - minLevel;
+  inFence = false;
+
+  return lines
+    .map((line) => {
+      const fenceMatch = line.match(FENCE_RE);
+      if (fenceMatch && !inFence) {
+        inFence = true;
+        return line;
+      }
+      if (inFence) {
+        if (fenceMatch) {
+          inFence = false;
+        }
+        return line;
+      }
+      const headingMatch = line.match(ATX_HEADING_RE);
+      if (!headingMatch) {
+        return line;
+      }
+      const nextLevel = Math.min(6, headingMatch[1].length + offset);
+      return `${'#'.repeat(nextLevel)}${headingMatch[2]}${headingMatch[3]}`;
+    })
+    .join('\n');
+};
+
 // 生成 README 内容
 const generateReadme = (outputData) => {
   const {
     name,
     packageName,
     description,
+    keywords,
     summary,
     style,
     example
   } = outputData;
   
   const hasDescription = description && description.trim();
+  const normalizedKeywords = normalizeKeywords(keywords);
+  const hasKeywords = normalizedKeywords.length > 0;
   const hasPackageName = packageName && packageName.trim();
   const hasSummary = summary && summary.trim();
   const isFull = get(example, 'isFull') === true;
@@ -584,11 +716,16 @@ const generateReadme = (outputData) => {
   const hasStyle = style && style.trim();
   const exampleList = get(example, 'list', []);
   const hasExamples = Array.isArray(exampleList) && exampleList.length > 0;
+  const sectionLevel = 3;
   
   let content = `# ${name}\n\n`;
   
   if (hasDescription) {
-    content += `### 描述\n\n${description}\n\n`;
+    content += `### ${MD_TITLES.DESCRIPTION}\n\n${demoteMarkdownHeadings(description, sectionLevel)}\n\n`;
+  }
+
+  if (hasKeywords) {
+    content += `### ${MD_TITLES.KEYWORDS}\n\n${formatKeywordsBody(normalizedKeywords)}\n\n`;
   }
   
   if (hasPackageName) {
@@ -596,7 +733,7 @@ const generateReadme = (outputData) => {
   }
   
   if (hasSummary) {
-    content += `### 概述\n\n${summary}\n\n`;
+    content += `### 概述\n\n${demoteMarkdownHeadings(summary, sectionLevel)}\n\n`;
   }
   
   content += `### ${buildItemTitleWithSuffixes({ title: MD_TITLES.EXAMPLE, isFull, devicePreview })}\n\n`;
@@ -609,7 +746,7 @@ const generateReadme = (outputData) => {
     content += `${buildExampleCodeSection(exampleList)}\n\n`;
   }
   
-  content += `### API\n\n${outputData.api}`;
+  content += `### API\n\n${demoteMarkdownHeadings(outputData.api || '', sectionLevel)}`;
   
   return content;
 };
@@ -655,6 +792,7 @@ const stringify = async (options = {}) => {
     data: {
       name: outputData.name,
       description: outputData.description,
+      keywords: outputData.keywords,
       summary: outputData.summaryMD,
       example: Object.assign({}, data.example, outputData.styleObject),
       api: outputData.apiMd
@@ -697,11 +835,22 @@ const parseExampleProps = ($domList, exampleIndex, apiTitleIndex) => {
       });
       
       const { title, isFull, devicePreview } = parseItemTitleMeta(output[0] || '');
+      let keywords = [];
+      let scopeStr = output[2];
+
+      if (output.length >= 4) {
+        const parsedKeywords = parseKeywordsLine(output[2]);
+        if (parsedKeywords) {
+          keywords = parsedKeywords;
+          scopeStr = output[3];
+        }
+      }
 
       props.push({
         title,
         description: output[1] || '',
-        scope: parseScopeString(output[2]),
+        ...(keywords.length ? { keywords } : {}),
+        scope: parseScopeString(scopeStr),
         ...(isFull ? { isFull: true } : {}),
         ...(devicePreview === false ? { devicePreview: false } : {})
       });
@@ -736,7 +885,7 @@ const findTitleIndex = ($domList, tagName, text) => {
 // 解析 Markdown 文本
 const parse = (text) => {
   if (!text || typeof text !== 'string') {
-    return { name: '', summary: '', api: '', example: { list: [] } };
+    return { name: '', description: '', keywords: [], summary: '', api: '', example: { list: [] } };
   }
   
   const data = {};
@@ -747,6 +896,18 @@ const parse = (text) => {
   // 解析组件名称
   const $h1 = $domList.filter('h1');
   data.name = $h1.length > 0 ? $h1.first().text().trim() : '';
+
+  // 解析描述 / 关键词（独立标题，缺则对应字段为空）
+  const descriptionTitleIndex = findTitleIndex($domList, 'h3', MD_TITLES.DESCRIPTION);
+  const keywordsTitleIndex = findTitleIndex($domList, 'h3', MD_TITLES.KEYWORDS);
+  data.description =
+    descriptionTitleIndex >= 0
+      ? getSectionPlainText($domList, descriptionTitleIndex, findNextH3Index($domList, descriptionTitleIndex))
+      : '';
+  data.keywords =
+    keywordsTitleIndex >= 0
+      ? normalizeKeywords(getSectionPlainText($domList, keywordsTitleIndex, findNextH3Index($domList, keywordsTitleIndex)))
+      : [];
   
   // 查找各部分标题索引
   const summaryTitleIndex = findTitleIndex($domList, 'h3', MD_TITLES.SUMMARY);
@@ -813,11 +974,15 @@ module.exports = {
   mergeAppendExamplesIntoReadme,
   buildExampleCodeSection,
   generateReadmeConfig,
+  demoteMarkdownHeadings,
   resolvePath,
   resolveExampleListReferences,
   loadReferencedExample,
   normalizeCurrentLibPlaceholder,
   normalizeReferencedExample,
+  normalizeKeywords,
+  formatKeywordsLine,
+  parseKeywordsLine,
   ITEM_FULL_SUFFIX,
   ITEM_DEVICE_PREVIEW_OFF_SUFFIX,
   parseItemTitleMeta,
