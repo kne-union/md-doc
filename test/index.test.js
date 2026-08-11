@@ -877,6 +877,54 @@ API content.`;
       expect(data.keywords).to.deep.equal(['react', 'form', 'ui']);
     });
 
+    it('example.json 根级 description/keywords 优先于 package.json', async () => {
+      await fs.writeJson(path.join(tempDir, 'package.json'), {
+        name: '@test/component',
+        description: 'From package',
+        keywords: ['pkg', 'a'],
+        version: '1.0.0'
+      });
+      await fs.writeJson(path.join(tempDir, 'doc/example.json'), {
+        description: 'From example.json',
+        keywords: ['ex', 'b'],
+        list: []
+      });
+
+      const { readme, data } = await stringify({ baseDir: tempDir, output: false });
+
+      expect(readme).to.include('### 描述');
+      expect(readme).to.include('From example.json');
+      expect(readme).to.not.include('From package');
+      expect(readme).to.include('### 关键词');
+      expect(readme).to.include('ex, b');
+      expect(readme).to.not.include('pkg, a');
+      expect(data.description).to.equal('From example.json');
+      expect(data.keywords).to.deep.equal(['ex', 'b']);
+
+      const parsed = parse(readme);
+      expect(parsed.description).to.equal('From example.json');
+      expect(parsed.keywords).to.deep.equal(['ex', 'b']);
+    });
+
+    it('example.json 未声明根级字段时回退 package.json', async () => {
+      await fs.writeJson(path.join(tempDir, 'package.json'), {
+        name: '@test/component',
+        description: 'From package',
+        keywords: ['pkg'],
+        version: '1.0.0'
+      });
+      await fs.writeJson(path.join(tempDir, 'doc/example.json'), {
+        list: []
+      });
+
+      const { readme, data } = await stringify({ baseDir: tempDir, output: false });
+
+      expect(data.description).to.equal('From package');
+      expect(data.keywords).to.deep.equal(['pkg']);
+      expect(readme).to.include('From package');
+      expect(readme).to.include('pkg');
+    });
+
     it('仅有 keywords 时只输出「关键词」标题', async () => {
       await fs.writeJson(path.join(tempDir, 'package.json'), {
         name: '@test/component',

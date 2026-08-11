@@ -24,8 +24,8 @@
 | 属性名 | 说明 | 类型 |
 |--------|------|------|
 | name | 组件名称 | string |
-| description | 包描述（来自 package.json）；为空时 README **不输出**「### 描述」 | string |
-| keywords | 包关键词（来自 package.json.keywords）；为空时 README **不输出**「### 关键词」 | string[] |
+| description | 包描述；优先取 `example.json` 根字段，否则取 `package.json`；为空时 README **不输出**「### 描述」 | string |
+| keywords | 包关键词；优先取 `example.json` 根字段，否则取 `package.json.keywords`；为空时 README **不输出**「### 关键词」 | string[] |
 | summary | 概述内容（HTML） | string |
 | example | 示例数据，含 `isFull`、`className`、`style`、`list` | object |
 | api | API 文档（HTML） | string |
@@ -299,7 +299,8 @@ Markdown 字符串；`exampleList` 为空时返回空字符串。
 
 | 标题 | 级别 | 用途 |
 |------|------|------|
-| 描述 | h3 | 包描述（stringify 从 package.json 写入） |
+| 描述 | h3 | 包描述（stringify：example.json 根字段优先，否则 package.json） |
+| 关键词 | h3 | 包关键词（stringify：example.json 根字段优先，否则 package.json） |
 | 安装 | h3 | npm 安装命令 |
 | 概述 | h3 | 对应 `doc/summary.md` |
 | 示例 / 示例(全屏) | h3 | 示例区域 |

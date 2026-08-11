@@ -14,7 +14,7 @@ npm i --save @kne/md-doc
 
 `@kne/md-doc` 是面向组件库与模块化项目的 Markdown 文档工具，负责在**分散的 doc 源文件**与**统一的 README.md**之间双向转换，供文档站点、示例驱动器（example-driver）等下游系统消费。
 
-## 核心能力
+#### 核心能力
 
 - **stringify**：读取 `doc/` 目录下的文档片段，合并生成完整的 `README.md`
 - **parse**：将 `README.md` 反向解析为结构化数据（名称、概述、示例、API）
@@ -22,13 +22,13 @@ npm i --save @kne/md-doc
 - **样式编译**：将 `style.scss` / `style.css` 编译为独立 `className` 与内联 CSS
 - **CLI 工具**：通过 `create-md` 命令一键生成，并支持 `--watch` 监听变更
 
-## 适用场景
+#### 适用场景
 
 - 组件库将 API、概述、示例代码拆分为独立文件维护
 - 封装层组件（如 `@components/File`）引用底层包（如 `@kne/react-file`）的示例，避免重复编写
 - 将 README 解析为 JSON，供在线文档、示例预览系统使用
 
-## 目录结构
+#### 目录结构
 
 在需要生成文档的包根目录下创建 `doc/` 目录：
 
@@ -52,9 +52,9 @@ your-package/
 | `doc/api.md` | 写入 README 的「API」章节 |
 | `doc/example.json` | 示例列表配置 |
 | `doc/style.scss` / `doc/style.css` | 示例全局样式（优先 scss） |
-| `package.json` | 包名、描述，用于生成标题与安装说明 |
+| `package.json` | 包名、描述、关键词；描述/关键词可被 `example.json` 根字段覆盖 |
 
-## stringify 工作流程
+#### stringify 工作流程
 
 1. 读取 `baseDir` 下 `doc/` 中的源文件与 `package.json`
 2. 解析 `example.json` 的 `list`：
@@ -64,12 +64,14 @@ your-package/
 4. 否则按模板生成完整 README（描述、安装、概述、示例、API）
 5. 写入 `README.md` 或返回结构化数据
 
-## example.json 配置
+#### example.json 配置
 
-### 基础结构
+##### 基础结构
 
 ```json
 {
+  "description": "组件包描述（优先于 package.json）",
+  "keywords": ["react", "form"],
   "isFull": false,
   "list": [
     {
@@ -87,6 +89,8 @@ your-package/
 
 | 字段 | 说明 |
 |------|------|
+| `description` | 包级描述；存在时优先于 `package.json` 的 `description`，写入 README「### 描述」 |
+| `keywords` | 包级关键词；存在时优先于 `package.json` 的 `keywords`，写入 README「### 关键词」 |
 | `isFull` | 为 `true` 时，示例区域标题显示为「示例(全屏)」 |
 | `list` | 示例条目数组 |
 | `list[].title` | 示例标题 |
@@ -95,7 +99,7 @@ your-package/
 | `list[].scope` | 示例运行时的依赖声明 |
 | `list[].isFull` | 单条示例是否全屏展示，标题后追加 `(全屏)` |
 
-### scope 依赖声明
+##### scope 依赖声明
 
 | 场景 | name | packageName |
 |------|------|-------------|
@@ -106,7 +110,7 @@ your-package/
 
 `scope` 项可额外包含 `importStatement`，写入 README 时以 `[import ...]` 形式保留。
 
-### 整包引用
+##### 整包引用
 
 在 `example.json` 根节点设置 `reference`，以引用包的 `README.md` 作为文档主体，本地 `list` 中的示例会**追加**到引用包示例列表末尾。适用于封装层只需补充少量扩展示例的场景。
 
@@ -124,7 +128,7 @@ your-package/
 }
 ```
 
-### 单项引用
+##### 单项引用
 
 在 `list` 条目中同时使用 `reference` 与 `path`，从引用包按路径取一条示例，与本地示例混排。
 
@@ -158,7 +162,7 @@ your-package/
 4. 若引用示例的 `code` 为 `./xxx.js` 且引用包本地存在对应文件，自动加载代码内容
 5. 条目中除 `reference`、`path` 外的字段（如 `title`、`description`）会覆盖引用结果
 
-## parse 反向解析
+#### parse 反向解析
 
 `parse` 读取符合约定结构的 README.md，提取：
 
@@ -169,7 +173,7 @@ your-package/
 
 示例代码中的反引号在 stringify 时会转义为 `&#96;`，parse 时会还原，保证模板字符串等内容往返不丢失。
 
-## CLI 使用
+#### CLI 使用
 
 ```shell
 # 在当前目录生成 README.md
@@ -179,7 +183,7 @@ npx create-md
 npx create-md --watch
 ```
 
-## 编程式调用
+#### 编程式调用
 
 ```javascript
 const { stringify, parse } = require('@kne/md-doc');
@@ -199,11 +203,11 @@ const parsed = parse(readmeContent);
 
 ### API
 
-### stringify
+#### stringify
 
 根据目录地址读取 `doc/` 源文件，生成 `README.md` 或返回结构化数据。
 
-#### 参数
+##### 参数
 
 | 属性名 | 说明 | 类型 | 默认值 |
 |--------|------|------|--------|
@@ -211,7 +215,7 @@ const parsed = parse(readmeContent);
 | output | 是否写入 `baseDir/README.md` | boolean | `true` |
 | name | 自定义组件名称（覆盖 package.json 中的 name 末段） | string | 从 `package.json` 读取 |
 
-#### 返回值
+##### 返回值
 
 `output` 为 `true` 时，将 README 写入磁盘，同时仍返回下方对象。
 
@@ -220,47 +224,65 @@ const parsed = parse(readmeContent);
 | readme | 生成的 README.md 完整文本 | string |
 | data | 结构化文档数据 | DataOptions |
 
-#### DataOptions
+##### DataOptions
 
 | 属性名 | 说明 | 类型 |
 |--------|------|------|
 | name | 组件名称 | string |
-| description | 包描述（来自 package.json） | string |
+| description | 包描述；优先取 `example.json` 根字段，否则取 `package.json`；为空时 README **不输出**「### 描述」 | string |
+| keywords | 包关键词；优先取 `example.json` 根字段，否则取 `package.json.keywords`；为空时 README **不输出**「### 关键词」 | string[] |
 | summary | 概述内容（HTML） | string |
 | example | 示例数据，含 `isFull`、`className`、`style`、`list` | object |
 | api | API 文档（HTML） | string |
 
-#### 处理优先级
+包级 README 约定：
+
+```markdown
+### 描述
+
+{description}
+
+### 关键词
+
+a, b, c
+```
+
+二者独立；缺内容则对应标题整段不出现。
+
+##### 处理优先级
 
 1. 解析 `example.list` 中每条 `reference` + `path` 单项引用
 2. 加载本地 `code` 文件内容
 3. 若 `example.reference` 存在，使用引用包 README 并追加本地 `list`，**不再**走本地模板生成
 4. 否则按 `summary.md`、`api.md`、`example.json` 等本地文件合成 README
+5. 写入「描述 / 概述 / API」等区块时，对正文 ATX 标题做统一降级：正文最高级标题若级别 ≤ 区块标题（`###`），整体下移使最高级变为 `####`；代码围栏内不处理
 
 ---
 
-### parse
+#### parse
 
 将符合约定结构的 README.md 文本解析为结构化对象。
 
-#### 参数
+##### 参数
 
 | 属性名 | 说明 | 类型 | 默认值 |
 |--------|------|------|--------|
 | text | README.md 文件内容 | string | - |
 
-传入空字符串、`null` 或 `undefined` 时返回 `{ name: '', summary: '', api: '', example: { list: [] } }`。
+传入空字符串、`null` 或 `undefined` 时返回 `{ name: '', description: '', keywords: [], summary: '', api: '', example: { list: [] } }`。
 
-#### 返回值
+##### 返回值
 
 | 属性名 | 说明 | 类型 |
 |--------|------|------|
 | name | H1 标题 | string |
+| description | 「描述」章节纯文本；无该标题时为空字符串 | string |
+| keywords | 「关键词」章节解析结果；无该标题时为空数组 | string[] |
 | summary | 「概述」章节 HTML | string |
 | api | 「API」章节 HTML | string |
 | example | 示例对象 | object |
 
-#### example 对象
+##### example 对象
 
 | 属性名 | 说明 | 类型 |
 |--------|------|------|
@@ -269,17 +291,27 @@ const parsed = parse(readmeContent);
 | style | 编译后的 CSS | string |
 | list | 示例列表 | array |
 
-#### list 数组项
+##### list 数组项
 
 | 属性名 | 说明 | 类型 |
 |--------|------|------|
 | title | 示例标题（已去除 `(全屏)` 后缀） | string |
 | description | 示例说明 | string |
+| keywords | 示例关键词；无关键词行时不出现该字段 | string[] |
 | scope | 依赖范围 | array |
 | code | 示例代码 | string |
 | isFull | 单条示例是否全屏 | boolean |
 
-#### scope 数组项
+示例项 README 约定（有关键词时 4 行，无关键词时保持旧 3 行）：
+
+```markdown
+- {title}
+- {description}
+- 关键词：a, b
+- {scope}
+```
+
+##### scope 数组项
 
 | 属性名 | 说明 | 类型 |
 |--------|------|------|
@@ -291,53 +323,75 @@ README 中 scope 行格式：`_Button(@components/Button)[import ...],antd(antd)
 
 ---
 
-### styleTransform
+#### styleTransform
 
 将 SCSS/CSS 样式字符串编译为独立类名与 CSS，用于示例样式隔离。
 
-#### 参数
+##### 参数
 
 | 参数名 | 说明 | 类型 |
 |--------|------|------|
 | name | 组件名称，参与生成 className | string |
 | styleString | 样式字符串（支持 SCSS 嵌套） | string |
 
-#### 返回值
+##### 返回值
 
 | 属性名 | 说明 | 类型 |
 |--------|------|------|
 | className | 唯一类名，格式 `{name}_{md5前5位}` | string |
 | style | 编译后的 CSS；未安装 `sass` 或编译失败时为空字符串 | string |
 
-#### 注意
+##### 注意
 
 - 组件名中的 `@`、`/`、`-` 会替换为 `_`
 - 需要安装 `sass` 才能编译 SCSS；未安装时仅返回 `className`
 
 ---
 
-### resolvePath
+#### generateReadmeConfig
+
+将 `parse` / `stringify` 得到的结构化文档转为 **modules-dev 示例页**使用的 `readmeConfig` 模块源码（供 `readme-loader` 调用）。
+
+##### 参数
+
+| 参数名 | 说明 | 类型 |
+|--------|------|------|
+| readme | 含 `name`、`summary`、`api`、`example` 等字段的对象 | object |
+
+##### 返回值
+
+可执行的 ES 模块源码字符串，默认导出 `readmeConfig`。
+
+##### 注意
+
+- 根级 `example.isFull` 与 `list[].isFull` 均会写入输出；后者供 `@kne/example-driver` 在双列布局下单条示例置顶全宽展示。
+- `example.json` 中 `list[].isFull: true` 经 `stringify` 写入 README 标题后缀 `(全屏)`，再经 `parse` → `generateReadmeConfig` 还原为 `isFull: true`。
+- 包级 / 示例级非空 `keywords` 会写入 `readmeConfig`；空则省略该字段。
+
+---
+
+#### resolvePath
 
 按路径表达式从对象中取值，用于解析 `example.json` 中的 `path` 字段。
 
-#### 参数
+##### 参数
 
 | 参数名 | 说明 | 类型 |
 |--------|------|------|
 | obj | 源对象 | object |
 | pathStr | 路径表达式，如 `list[0]`、`list.1` | string |
 
-#### 返回值
+##### 返回值
 
 匹配到的值；路径不存在时返回 `undefined`。
 
 ---
 
-### loadReferencedExample
+#### loadReferencedExample
 
 从引用包加载单条示例。
 
-#### 参数
+##### 参数
 
 | 参数名 | 说明 | 类型 | 默认值 |
 |--------|------|------|--------|
@@ -345,11 +399,11 @@ README 中 scope 行格式：`_Button(@components/Button)[import ...],antd(antd)
 | pathStr | 在引用包示例数据中的路径 | string | - |
 | baseDir | 模块解析起点，向上遍历查找 node_modules | string | `process.cwd()` |
 
-#### 返回值
+##### 返回值
 
 解析成功时返回示例对象（含 `title`、`description`、`code`、`scope` 等）；失败时返回 `null` 并输出警告。
 
-#### 数据来源
+##### 数据来源
 
 1. 引用包存在 `doc/example.json` 时，直接读取 JSON
 2. 否则解析引用包 `README.md`，从 `parse` 结果的 `example` 中取数
@@ -357,22 +411,22 @@ README 中 scope 行格式：`_Button(@components/Button)[import ...],antd(antd)
 
 ---
 
-### resolveExampleListReferences
+#### resolveExampleListReferences
 
 批量解析 `example.list` 中含 `reference` + `path` 的条目，**原地修改**数组。
 
-#### 参数
+##### 参数
 
 | 参数名 | 说明 | 类型 | 默认值 |
 |--------|------|------|--------|
 | exampleList | 示例列表 | array | - |
 | baseDir | 传递给 `loadReferencedExample` 的解析起点 | string | `process.cwd()` |
 
-#### 返回值
+##### 返回值
 
 `Promise<void>`。解析失败的条目保持原样。
 
-#### 合并规则
+##### 合并规则
 
 ```javascript
 // 解析前
@@ -386,18 +440,18 @@ README 中 scope 行格式：`_Button(@components/Button)[import ...],antd(antd)
 
 ---
 
-### mergeAppendExamplesIntoReadme
+#### mergeAppendExamplesIntoReadme
 
 将本地示例列表追加到引用包 README 的「示例代码」区块末尾，用于整包引用场景。
 
-#### 参数
+##### 参数
 
 | 参数名 | 说明 | 类型 |
 |--------|------|------|
 | readme | 引用包 README 文本 | string |
 | appendList | 待追加的示例列表（`code` 需为已展开的字符串） | array |
 
-#### 返回值
+##### 返回值
 
 合并后的 README 文本。`appendList` 为空时原样返回 `readme`。
 
@@ -405,17 +459,17 @@ README 中 scope 行格式：`_Button(@components/Button)[import ...],antd(antd)
 
 ---
 
-### buildExampleCodeSection
+#### buildExampleCodeSection
 
 将示例列表渲染为 README 中的「#### 示例代码」Markdown 片段。
 
-#### 参数
+##### 参数
 
 | 参数名 | 说明 | 类型 |
 |--------|------|------|
 | exampleList | 示例数组，每项需含 `title`、`description`、`code`、`scope` | array |
 
-#### 返回值
+##### 返回值
 
 Markdown 字符串；`exampleList` 为空时返回空字符串。
 
@@ -435,7 +489,7 @@ Markdown 字符串；`exampleList` 为空时返回空字符串。
 
 ---
 
-### create-md（CLI）
+#### create-md（CLI）
 
 | 命令 | 说明 |
 |------|------|
@@ -444,13 +498,14 @@ Markdown 字符串；`exampleList` 为空时返回空字符串。
 
 ---
 
-### README 章节约定
+#### README 章节约定
 
 `parse` 与 `stringify` 依赖以下固定标题（需完全一致）：
 
 | 标题 | 级别 | 用途 |
 |------|------|------|
-| 描述 | h3 | 包描述（stringify 从 package.json 写入） |
+| 描述 | h3 | 包描述（stringify：example.json 根字段优先，否则 package.json） |
+| 关键词 | h3 | 包关键词（stringify：example.json 根字段优先，否则 package.json） |
 | 安装 | h3 | npm 安装命令 |
 | 概述 | h3 | 对应 `doc/summary.md` |
 | 示例 / 示例(全屏) | h3 | 示例区域 |
