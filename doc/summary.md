@@ -38,7 +38,7 @@ your-package/
 | `doc/api.md` | 写入 README 的「API」章节 |
 | `doc/example.json` | 示例列表配置 |
 | `doc/style.scss` / `doc/style.css` | 示例全局样式（优先 scss） |
-| `package.json` | 包名、描述，用于生成标题与安装说明 |
+| `package.json` | 包名、描述、关键词；描述/关键词可被 `example.json` 根字段覆盖 |
 
 ## stringify 工作流程
 
@@ -56,6 +56,8 @@ your-package/
 
 ```json
 {
+  "description": "组件包描述（优先于 package.json）",
+  "keywords": ["react", "form"],
   "isFull": false,
   "list": [
     {
@@ -73,6 +75,8 @@ your-package/
 
 | 字段 | 说明 |
 |------|------|
+| `description` | 包级描述；存在时优先于 `package.json` 的 `description`，写入 README「### 描述」 |
+| `keywords` | 包级关键词；存在时优先于 `package.json` 的 `keywords`，写入 README「### 关键词」 |
 | `isFull` | 为 `true` 时，示例区域标题显示为「示例(全屏)」 |
 | `list` | 示例条目数组 |
 | `list[].title` | 示例标题 |

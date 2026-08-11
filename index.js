@@ -464,16 +464,33 @@ const handleReference = async (baseDir, example, output, { appendList = [] } = {
   }
 };
 
+// 包级描述 / 关键词：example.json 根字段优先于 package.json
+const resolvePackageMeta = (data) => {
+  const example = data.example && typeof data.example === 'object' ? data.example : {};
+  const hasExampleDescription = Object.prototype.hasOwnProperty.call(example, 'description') && example.description != null;
+  const hasExampleKeywords = Object.prototype.hasOwnProperty.call(example, 'keywords') && example.keywords != null;
+
+  return {
+    description: hasExampleDescription
+      ? String(example.description)
+      : get(data, 'package.description', ''),
+    keywords: normalizeKeywords(
+      hasExampleKeywords ? example.keywords : get(data, 'package.keywords', [])
+    )
+  };
+};
+
 // 格式化输出数据
 const formatOutputData = (data, options) => {
   const md = new Markdown();
   const name = options.name || last(get(data, 'package.name', '').split('/')) || '';
-  
+  const { description, keywords } = resolvePackageMeta(data);
+
   return {
     name,
     packageName: get(data, 'package.name', ''),
-    description: get(data, 'package.description', ''),
-    keywords: normalizeKeywords(get(data, 'package.keywords', [])),
+    description,
+    keywords,
     summary: data.summary || '',
     summaryMD: md.render(data.summary || ''),
     style: (data.style || '').trim(),
