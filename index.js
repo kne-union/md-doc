@@ -90,9 +90,9 @@ const findExampleTitleIndex = ($domList) => {
   return -1;
 };
 
-// 初始化 jQuery
+// 初始化 jQuery（仅用局部 JSDOM，不要污染 global.document；
+// 否则会让 livekit-server-sdk 等误判为浏览器环境）
 const { document } = (new JSDOM()).window;
-global.document = document;
 const $ = require('jquery')(document.defaultView);
 
 // 缓存 sass 模块
