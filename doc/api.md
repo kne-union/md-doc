@@ -24,10 +24,25 @@
 | 属性名 | 说明 | 类型 |
 |--------|------|------|
 | name | 组件名称 | string |
-| description | 包描述（来自 package.json） | string |
+| description | 包描述（来自 package.json）；为空时 README **不输出**「### 描述」 | string |
+| keywords | 包关键词（来自 package.json.keywords）；为空时 README **不输出**「### 关键词」 | string[] |
 | summary | 概述内容（HTML） | string |
 | example | 示例数据，含 `isFull`、`className`、`style`、`list` | object |
 | api | API 文档（HTML） | string |
+
+包级 README 约定：
+
+```markdown
+### 描述
+
+{description}
+
+### 关键词
+
+a, b, c
+```
+
+二者独立；缺内容则对应标题整段不出现。
 
 #### 处理优先级
 
@@ -35,6 +50,7 @@
 2. 加载本地 `code` 文件内容
 3. 若 `example.reference` 存在，使用引用包 README 并追加本地 `list`，**不再**走本地模板生成
 4. 否则按 `summary.md`、`api.md`、`example.json` 等本地文件合成 README
+5. 写入「描述 / 概述 / API」等区块时，对正文 ATX 标题做统一降级：正文最高级标题若级别 ≤ 区块标题（`###`），整体下移使最高级变为 `####`；代码围栏内不处理
 
 ---
 
@@ -48,13 +64,15 @@
 |--------|------|------|--------|
 | text | README.md 文件内容 | string | - |
 
-传入空字符串、`null` 或 `undefined` 时返回 `{ name: '', summary: '', api: '', example: { list: [] } }`。
+传入空字符串、`null` 或 `undefined` 时返回 `{ name: '', description: '', keywords: [], summary: '', api: '', example: { list: [] } }`。
 
 #### 返回值
 
 | 属性名 | 说明 | 类型 |
 |--------|------|------|
 | name | H1 标题 | string |
+| description | 「描述」章节纯文本；无该标题时为空字符串 | string |
+| keywords | 「关键词」章节解析结果；无该标题时为空数组 | string[] |
 | summary | 「概述」章节 HTML | string |
 | api | 「API」章节 HTML | string |
 | example | 示例对象 | object |
@@ -74,9 +92,19 @@
 |--------|------|------|
 | title | 示例标题（已去除 `(全屏)` 后缀） | string |
 | description | 示例说明 | string |
+| keywords | 示例关键词；无关键词行时不出现该字段 | string[] |
 | scope | 依赖范围 | array |
 | code | 示例代码 | string |
 | isFull | 单条示例是否全屏 | boolean |
+
+示例项 README 约定（有关键词时 4 行，无关键词时保持旧 3 行）：
+
+```markdown
+- {title}
+- {description}
+- 关键词：a, b
+- {scope}
+```
 
 #### scope 数组项
 
@@ -133,6 +161,7 @@ README 中 scope 行格式：`_Button(@components/Button)[import ...],antd(antd)
 
 - 根级 `example.isFull` 与 `list[].isFull` 均会写入输出；后者供 `@kne/example-driver` 在双列布局下单条示例置顶全宽展示。
 - `example.json` 中 `list[].isFull: true` 经 `stringify` 写入 README 标题后缀 `(全屏)`，再经 `parse` → `generateReadmeConfig` 还原为 `isFull: true`。
+- 包级 / 示例级非空 `keywords` 会写入 `readmeConfig`；空则省略该字段。
 
 ---
 
